@@ -178,7 +178,7 @@ def run_matrix(args, get_departures):
         row_h = height // max(1, args.limit)
 
         if not departures:
-            graphics.DrawText(offscreen, font, 2, font.baseline(),
+            graphics.DrawText(offscreen, font, 2, font.baseline,
                               red, "No departures")
         else:
             for i, dep in enumerate(departures[:args.limit]):
@@ -199,15 +199,15 @@ def run_matrix(args, get_departures):
                 while text and graphics.DrawText(offscreen, font, 0, -100,
                                                  main_c, text) > width - 2:
                     text = text[:-1]
-                graphics.DrawText(offscreen, font, 1, y_top + font.baseline(),
+                graphics.DrawText(offscreen, font, 1, y_top + font.baseline,
                                   main_c, text)
 
                 # sub/status line, smaller offset, right-aligned if room
                 sub_w = graphics.DrawText(offscreen, font, 0, -100, sub_c, status)
                 sub_x = max(1, width - sub_w - 1)
                 # only draw sub-line if there is vertical room for it
-                sub_y = y_top + font.baseline() + font.height() - 1
-                if sub_y < (i + 1) * row_h + font.height() // 2:
+                sub_y = y_top + font.baseline + font.height - 1
+                if sub_y < (i + 1) * row_h + font.height // 2:
                     graphics.DrawText(offscreen, font, sub_x, sub_y, sub_c, status)
                 else:
                     # tiny panel: append status to main line instead
