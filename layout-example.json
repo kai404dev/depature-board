@@ -1,0 +1,8 @@
+{
+  "items": [
+    {"font": "5x7.bdf", "text": "10:00 Matlock Town", "x": 1, "y": 7, "color": "255,255,0"},
+    {"font": "4x6.bdf", "text": "Calling at Darley Dale", "x": 1, "y": 15, "color": "255,140,0"},
+    {"font": "4x6.bdf", "text": "11:00 Matlock Riverside", "x": 1, "y": 23, "color": "255,140,0"},
+    {"font": "tom-thumb.bdf", "text": "14:23:05", "x": 70, "y": 31, "color": "255,140,0"}
+  ]
+}
