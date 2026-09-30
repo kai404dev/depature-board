@@ -483,23 +483,24 @@ def run_matrix(args, get_board_data):
         cars, label = formation_of(dep, default_cars=args.coaches)
         n = len(cars)
 
-        # header: "10:00 Matlock Town" left, "4 coaches" right
-        y_head = sfont.baseline
-        lab_w = text_width(graphics, offscreen, sfont, amber, label)
-        graphics.DrawText(offscreen, sfont, max(1, width - lab_w - 1),
-                          y_head, amber, label)
-        head = fit_text(graphics, offscreen, sfont, amber, f"{t} {dest}",
-                        width - lab_w - 4)
-        graphics.DrawText(offscreen, sfont, 1, y_head, yellow, head)
+        # header in the standard main font, full width (the coach
+        # count is visible from the cards, no room for a side label)
+        y_head = font.baseline
+        t_part = t + " "
+        w_time = graphics.DrawText(offscreen, font, 1, y_head,
+                                   yellow, t_part)
+        graphics.DrawText(offscreen, font, 1 + w_time, y_head, amber,
+                          fit_text(graphics, offscreen, font, amber, dest,
+                                   width - w_time - 1))
 
         # coach cards row: fixed width, left-aligned so the centered
         # clock and page number never collide with them. First car gets
         # a pointy (slanted) front. All outlines amber, all fills yellow
         # at capacity height; class markers inside auto-contrast.
-        margin, gap_b, bh, slant = 2, 3, 12, 5
+        margin, gap_b, bh, slant = 2, 3, 10, 5
         bw = args.coach_width
         x0 = margin
-        y_top = y_head + 3
+        y_top = y_head + 1
         yb = y_top + bh - 1
 
         def draw_wheelchair(cx, it, col):
@@ -519,8 +520,10 @@ def run_matrix(args, get_board_data):
             x = x0 + i * (bw + gap_b)
             x1 = x + bw - 1
             cx = x + bw // 2 + (slant // 2 if i == 0 else 0)
-            # capacity fill from the bottom
+            # capacity fill from the bottom (min 1px when loaded)
             fill_h = int((bh - 2) * car["capacity"])
+            if car["capacity"] > 0 and fill_h < 1:
+                fill_h = 1
             if fill_h > 0:
                 for yy in range(max(y_top + 1, yb - fill_h), yb):
                     if i == 0:
@@ -555,8 +558,8 @@ def run_matrix(args, get_board_data):
         clock_s, clock_x, clock_w = clock_geom()
         page_w = draw_page_num(page)
 
-        # carriage letter under each car, centered
-        y_lab = y_top + bh + sfont.height - 1
+        # carriage letter under each car, centered (tight pitch: -2)
+        y_lab = y_top + bh + sfont.height - 2
         if y_lab < height:
             for i, car in enumerate(cars):
                 x = x0 + i * (bw + gap_b)
@@ -579,6 +582,9 @@ def run_matrix(args, get_board_data):
         bw, bh = 24, 2
         x1, y1 = width - 1, height - 8
         fill = int(bw * frac)
+        for yy in range(y1, y1 + bh):  # black backing so it covers text
+            for xx in range(x1 - bw + 1, x1 + 1):
+                offscreen.SetPixel(xx, yy, 0, 0, 0)
         for yy in range(y1, y1 + bh):
             for xx in range(x1 - fill + 1, x1 + 1):
                 offscreen.SetPixel(xx, yy, yellow.red,
