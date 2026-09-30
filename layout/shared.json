@@ -31,11 +31,8 @@
     "y": "bottom"
   },
   "progress": {
-    "_comment": "Page-flip progress bar (hidden when only one page). x/y anchor its bottom-right corner.",
+    "_comment": "Page-flip progress bar drawn BEHIND the page number (digits knock it out).",
     "color": "time",
-    "width": 24,
-    "height": 2,
-    "x": "right",
-    "y": "bottom-8"
+    "backing": "text"
   }
 }

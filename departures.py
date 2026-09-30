@@ -184,10 +184,8 @@ def load_layout(layout_dir, overlay=None):
     L["page_num"] = clock_page_num(pgm, path, "page_num")
     prg = _section(raw, path, "progress")
     L["progress"] = {"color": _color(prg, path, "progress", colors),
-                     "width": _num(prg, path, "progress", "width"),
-                     "height": _num(prg, path, "progress", "height"),
-                     "x": _xpos(prg, path, "progress"),
-                     "y": _ypos(prg, path, "progress")}
+                     "backing": _color(prg, path, "progress", colors,
+                                       "backing")}
 
     raw1, path1 = read("page1.json")
     top = _section(raw1, path1, "top")
@@ -497,32 +495,53 @@ def run_matrix(args, L, get_board_data, layout_dir):
         w = text_width(graphics, offscreen, fnt, C[spec["color"]], s)
         return s, fnt, resolve_x(spec["x"], w, width), w
 
-    def draw_page_num(n):
-        """Page indicator. Returns its pixel width."""
+    def page_label_geom(page):
+        """Measure the page indicator without drawing it."""
         spec = L["page_num"]
-        lab = f"{n}/{len(args.pages)}"
+        lab = f"{page}/{len(args.pages)}"
         fnt = F[spec["font"]]
-        col = C[spec["color"]]
-        w = text_width(graphics, offscreen, fnt, col, lab)
-        graphics.DrawText(offscreen, fnt, resolve_x(spec["x"], w, width),
-                          resolve_y(spec["y"], height), col, lab)
-        return w
+        w = text_width(graphics, offscreen, fnt, C["text"], lab)
+        return lab, fnt, resolve_x(spec["x"], w, width), w, \
+            resolve_y(spec["y"], height)
+
+    def draw_page_chrome(page, frac):
+        """Progress bar behind the page number, digits knocking it out.
+        frac None hides the bar (single page); 1.0 = held page."""
+        P = L["progress"]
+        lab, fnt, x, w, y = page_label_geom(page)
+        if frac is not None:
+            back, fill = C[P["backing"]], C[P["color"]]
+            x0, x1 = x - 4, x + w + 4
+            y0 = y - fnt.height + 1 - 1
+            for yy in range(max(0, y0), min(height, y + 1)):
+                for xx in range(max(0, x0), min(width, x1 + 1)):
+                    offscreen.SetPixel(xx, yy, back.red,
+                                       back.green, back.blue)
+            fw = int((x1 - x0 + 1) * frac)
+            for yy in range(max(0, y0), min(height, y + 1)):
+                for xx in range(x0, min(x1 + 1, x0 + fw)):
+                    offscreen.SetPixel(xx, yy, fill.red,
+                                       fill.green, fill.blue)
+        graphics.DrawText(offscreen, fnt, x, y, C["mark"], lab)
 
     def draw_row(dep, fnt, seg, y_base, clock_x=None, right_extra=0):
-        """Service row: time + platform + destination + status."""
+        """Service row: time + platform + destination + status. The
+        flipped Exp time uses the small font so it steals less width
+        from the destination."""
         t, dest, status, raw = format_departure(dep)
         status = live_status(raw, args.flip_seconds)
         _, sub_c = status_colors(raw)
+        stfnt = (F["small"] if status.startswith("Exp ") else fnt)
         plat = (raw.get("platform") or "").strip()
         plat_part = (plat + " ") if plat else ""
         right_w = text_width(graphics, offscreen, fnt, seg["platform"], plat_part)
-        right_w += text_width(graphics, offscreen, fnt, sub_c, status)
+        right_w += text_width(graphics, offscreen, stfnt, sub_c, status)
         right_w += right_extra
         sub_x = max(1, width - right_w - 1)
         if plat:
             graphics.DrawText(offscreen, fnt, sub_x, y_base,
                               seg["platform"], plat_part)
-        graphics.DrawText(offscreen, fnt, sub_x + text_width(
+        graphics.DrawText(offscreen, stfnt, sub_x + text_width(
             graphics, offscreen, fnt, seg["platform"], plat_part),
             y_base, sub_c, status)
         t_part = t + " "
@@ -556,7 +575,7 @@ def run_matrix(args, L, get_board_data, layout_dir):
                            "x": "left"},
                      y0 + 1 + fnt.baseline + F["small"].height + 1)
 
-    def draw_page2(dep, page):
+    def draw_page2(dep, page, frac):
         """Next departure nice and big, with API notes underneath."""
         P2 = L["page2"]
         bfont = F[P2["headline"]["font"]]
@@ -584,7 +603,7 @@ def run_matrix(args, L, get_board_data, layout_dir):
                                    line2, width - 2))
 
         clock_s, clock_fnt, clock_x, clock_w = clock_geom()
-        page_w = draw_page_num(page)
+        page_w = page_label_geom(page)[3]
         nfont = F[P2["note"]["font"]]
         ncol = C[P2["note"]["color"]]
         notes = list(dep.get("note_lines") or [])
@@ -605,8 +624,9 @@ def run_matrix(args, L, get_board_data, layout_dir):
         graphics.DrawText(offscreen, clock_fnt, clock_x,
                           resolve_y(L["clock"]["y"], height),
                           C[L["clock"]["color"]], clock_s)
+        draw_page_chrome(page, frac)
 
-    def draw_page3(dep, page):
+    def draw_page3(dep, page, frac):
         """Train formation diagram: fixed-width coach cards, pointy front
         car, 1ST/wheelchair markers inside, letters underneath."""
         P3 = L["page3"]
@@ -643,17 +663,18 @@ def run_matrix(args, L, get_board_data, layout_dir):
         yb = y_top + bh - 1
 
         def draw_wheelchair(cx, it, col):
-            """~7x9 side-view wheelchair pictogram, top row it."""
+            """~7x8 side-view wheelchair pictogram, top row it. Fits the
+            8px coach interior exactly (no outline clip)."""
             ln = lambda x0, y0, x1, y1: graphics.DrawLine(
                 offscreen, x0, y0, x1, y1, col)
             px = lambda x, y: offscreen.SetPixel(
                 x, y, col.red, col.green, col.blue)
             px(cx - 2, it)                    # head
-            ln(cx - 2, it + 1, cx - 2, it + 4)  # backrest
-            ln(cx - 2, it + 4, cx + 2, it + 4)  # seat
-            ln(cx + 2, it + 4, cx + 2, it + 6)  # footrest
-            graphics.DrawCircle(offscreen, cx - 1, it + 6, 2, col)  # wheel
-            px(cx + 3, it + 7)                 # caster
+            ln(cx - 2, it + 1, cx - 2, it + 3)  # backrest
+            ln(cx - 2, it + 3, cx + 2, it + 3)  # seat
+            ln(cx + 2, it + 3, cx + 2, it + 5)  # footrest
+            graphics.DrawCircle(offscreen, cx - 1, it + 5, 2, col)  # wheel
+            px(cx + 3, it + 6)                 # caster
 
         for i, car in enumerate(cars):
             x = x0 + i * (bw + gap_b)
@@ -694,7 +715,7 @@ def run_matrix(args, L, get_board_data, layout_dir):
                 draw_wheelchair(cx, y_top + 1, mcol)
 
         clock_s, clock_fnt, clock_x, clock_w = clock_geom()
-        page_w = draw_page_num(page)
+        page_w = page_label_geom(page)[3]
 
         # carriage letter under each car, centered; baseline may sit on
         # the last row (safe: capitals never descend, canvas clips)
@@ -712,31 +733,9 @@ def run_matrix(args, L, get_board_data, layout_dir):
         graphics.DrawText(offscreen, clock_fnt, clock_x,
                           resolve_y(L["clock"]["y"], height),
                           C[L["clock"]["color"]], clock_s)
+        draw_page_chrome(page, frac)
 
-    def draw_progress():
-        """Progress bar: fraction of the page dwell elapsed. Skipped
-        when only one page is configured."""
-        if len(args.pages) < 2:
-            return
-        P = L["progress"]
-        pcol = C[P["color"]]
-        frac = (time.time() - page_since) / max(0.1, args.page_seconds)
-        frac = max(0.0, min(1.0, frac))
-        bw, bh = P["width"], P["height"]
-        x1 = {"left": bw, "center": (width + bw) // 2,
-              "right": width - 1}[P["x"]] if P["x"] in (
-                  "left", "center", "right") else P["x"] + bw - 1
-        y1 = resolve_y(P["y"], height)
-        fill = int(bw * frac)
-        for yy in range(y1, y1 + bh):  # black backing so it covers text
-            for xx in range(x1 - bw + 1, x1 + 1):
-                offscreen.SetPixel(xx, yy, 0, 0, 0)
-        for yy in range(y1, y1 + bh):
-            for xx in range(x1 - fill + 1, x1 + 1):
-                offscreen.SetPixel(xx, yy, pcol.red,
-                                   pcol.green, pcol.blue)
-
-    def draw_static(page):
+    def draw_static(page, frac):
         # Lead service + calling-at, then compact rows on a fixed pitch.
         # All positions from layout/page1.json.
         P1 = L["page1"]
@@ -746,7 +745,7 @@ def run_matrix(args, L, get_board_data, layout_dir):
         seg = {k: C[v] for k, v in P1["segments"].items()}
         rfont = F[P1["rows"]["font"]]
         clock_s, clock_fnt, clock_x, clock_w = clock_geom()
-        page_w = draw_page_num(page)
+        page_w = page_label_geom(page)[3]
 
         y = P1["top"]["y"]
         draw_row(rows[0], F[P1["top"]["font"]], seg, y)
@@ -755,26 +754,24 @@ def run_matrix(args, L, get_board_data, layout_dir):
         if cal["show"] == "top-only":
             draw_calling(rows[0], cal, cy)
         y = cy + P1["rows"]["dy"]
-        pitch = P1["rows"]["pitch"]
+        # second slot rotates through the remaining services
+        # (2nd/3rd swap every --rotate-seconds): two visible max
+        slot = rows[1:]
         clock_drawn = False
-        rest = rows[1:]
-        # reservations (clock/page caps) belong to the last DRAWN row,
-        # not the last listed one -- rows past the screen edge are cut
-        drawn = [(dep, y + n * pitch) for n, dep in enumerate(rest)
-                 if y + n * pitch < height]
-        if len(drawn) < len(rest):
-            if time.time() - getattr(draw_static, "_warned", 0) > 60:
-                print(f"warning: {len(rest) - len(drawn)} service row(s) "
-                      f"off-screen - check layout/page1.json rows/pitch?",
-                      file=sys.stderr)
-                draw_static._warned = time.time()
-        for k, (dep, yy) in enumerate(drawn):
-            last = (k == len(drawn) - 1)
-            share = last and yy >= height - rfont.height
-            draw_row(dep, rfont, seg, yy,
-                     clock_x=clock_x if share else None,
-                     right_extra=(page_w + 2) if last else 0)
-            if last:
+        if slot:
+            dep = slot[int(time.time() // args.rotate_seconds) % len(slot)]
+            yy = y
+            if yy >= height:
+                if time.time() - getattr(draw_static, "_warned", 0) > 60:
+                    print("warning: second service row off-screen "
+                          "- check layout/page1.json rows/dy?",
+                          file=sys.stderr)
+                    draw_static._warned = time.time()
+            else:
+                share = yy >= height - rfont.height
+                draw_row(dep, rfont, seg, yy,
+                         clock_x=clock_x if share else None,
+                         right_extra=page_w + 2)
                 # clock pinned to the bottom (shares the row on 32px)
                 graphics.DrawText(offscreen, clock_fnt, clock_x,
                                   yy if share else resolve_y(
@@ -782,10 +779,11 @@ def run_matrix(args, L, get_board_data, layout_dir):
                                   C[L["clock"]["color"]], clock_s)
                 clock_drawn = True
         if not clock_drawn:
-            # rows ran off-screen - clock still shows
+            # single service (or rows off-screen) - clock still shows
             graphics.DrawText(offscreen, clock_fnt, clock_x,
                               resolve_y(L["clock"]["y"], height),
                               C[L["clock"]["color"]], clock_s)
+        draw_page_chrome(page, frac)
 
     while True:
         now = time.time()
@@ -810,8 +808,9 @@ def run_matrix(args, L, get_board_data, layout_dir):
                 board = []
             last_fetch = now
 
-        if paused in (1, 2, 3) and not getattr(args, "ignore_control",
-                                                       False):
+        held = paused in (1, 2, 3) and not getattr(
+            args, "ignore_control", False)
+        if held:
             # held from the web UI (control.json): stay put, and restart
             # the dwell so unpausing begins a full page cycle
             cur_page = paused
@@ -822,28 +821,32 @@ def run_matrix(args, L, get_board_data, layout_dir):
                 page_since = now
             cur_page = args.pages[page_idx % len(args.pages)]
 
+        if len(args.pages) < 2:
+            frac = None
+        elif held:
+            frac = 1.0
+        else:
+            frac = max(0.0, min(1.0, (now - page_since)
+                                / max(0.1, args.page_seconds)))
+
         offscreen.Fill(0, 0, 0)
 
         if not board:
             graphics.DrawText(offscreen, F["top"], 2, 1 + F["top"].baseline,
                               C["alert"], "No departures")
-            draw_page_num(cur_page)
-            draw_progress()
+            draw_page_chrome(cur_page, frac)
         elif cur_page == 2:
-            draw_page2(board[0], cur_page)
-            draw_progress()
+            draw_page2(board[0], cur_page, frac)
         elif cur_page == 3:
-            draw_page3(board[0], cur_page)
-            draw_progress()
+            draw_page3(board[0], cur_page, frac)
         elif args.layout == "static":
-            draw_static(cur_page)
-            draw_progress()
+            draw_static(cur_page, frac)
         else:
             if len(board) > 1 and now - idx_since >= args.rotate_seconds:
                 idx = (idx + 1) % len(board)
                 idx_since = now
             draw_full(board[idx % len(board)], 0)
-            draw_progress()
+            draw_page_chrome(cur_page, frac)
 
         offscreen = matrix.SwapOnVSync(offscreen)
 

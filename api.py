@@ -97,6 +97,19 @@ def departure_status(d):
     return "On time"
 
 
+def delay_minutes(d):
+    """Delay in whole minutes, robust to strings/None/missing."""
+    v = d.get("delay_minutes", 0) or 0
+    try:
+        return max(0, int(v))
+    except (TypeError, ValueError):
+        pass
+    try:
+        return max(0, int(float(v)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def expected_time(d):
     """Expected departure HH:MM for a delayed service.
 
@@ -107,7 +120,7 @@ def expected_time(d):
     planned = d.get("planned_time") or ""
     if planned and planned != sched:
         return planned
-    mins = d.get("delay_minutes", 0) or 0
+    mins = delay_minutes(d)
     try:
         h, m = int(sched[0:2]), int(sched[3:5])
         m += mins

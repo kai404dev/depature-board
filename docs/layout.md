@@ -24,8 +24,10 @@ it names the exact culprit.
 - `clock` — live clock. `{font, color, format (strftime), x, y}`.
   Pinned bottom-middle by default (`center`/`bottom`).
 - `page_num` — `n/3` indicator `{font, color, x, y}` (tiny, bottom-right).
-- `progress` — page-flip progress bar `{color, width, height, x, y}`.
-  `x`/`y` anchor its bottom-right corner. Hidden with `--pages 1`.
+- `progress` — page-flip progress bar drawn *behind* the page number
+  (`{color, backing}`): fill grows left→right over the dwell, then the
+  digits knock it out in black. Full when a page is held, hidden with
+  `--pages 1`.
 
 ## page1.json (board)
 
