@@ -1,0 +1,20 @@
+{
+  "_comment": "Page 2: next departure big. Headline at y (destination lifted by dest_dy), status line dy below the headline, note line dy below the status. Clock + page number come from shared.json.",
+  "headline": {
+    "font": "big",
+    "y": 18,
+    "time_color": "time",
+    "dest_color": "text",
+    "dest_dy": -3
+  },
+  "status": {
+    "_comment": "Status text only (no platform: it would run under the centred clock).",
+    "font": "small",
+    "dy": 6
+  },
+  "note": {
+    "font": "small",
+    "color": "text",
+    "dy": 7
+  }
+}

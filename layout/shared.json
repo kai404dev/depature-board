@@ -1,0 +1,41 @@
+{
+  "_comment": "Shared look: font roles, named colours, and elements shown on every page (clock, page number, progress bar). Positions: x = left|center|right|pixels, y = pixels|bottom|bottom-N (baseline convention, N from screen edge).",
+  "fonts": {
+    "_comment": "BDF files in ./fonts (or absolute paths).",
+    "top": "7x14B.bdf",
+    "row": "6x12.bdf",
+    "small": "5x7.bdf",
+    "big": "10x20.bdf",
+    "tiny": "tom-thumb.bdf"
+  },
+  "colors": {
+    "_comment": "R,G,B. status text (ok/alert) is picked automatically by service state.",
+    "text": [255, 140, 0],
+    "time": [255, 255, 0],
+    "platform": [255, 255, 0],
+    "ok": [60, 255, 60],
+    "alert": [255, 30, 30],
+    "mark": [0, 0, 0]
+  },
+  "clock": {
+    "font": "small",
+    "color": "text",
+    "format": "%H:%M:%S",
+    "x": "center",
+    "y": "bottom"
+  },
+  "page_num": {
+    "font": "tiny",
+    "color": "text",
+    "x": "right",
+    "y": "bottom"
+  },
+  "progress": {
+    "_comment": "Page-flip progress bar (hidden when only one page). x/y anchor its bottom-right corner.",
+    "color": "time",
+    "width": 24,
+    "height": 2,
+    "x": "right",
+    "y": "bottom-8"
+  }
+}

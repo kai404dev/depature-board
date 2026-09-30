@@ -2,11 +2,18 @@
 """
 Peak Rail departures board for Waveshare RGB-Matrix / rpi-rgb-led-matrix.
 
-Three files work together:
-  api.py         fetching + formatting of the departures/timetable APIs
-  layout.json    all fonts, colours, text lines and positions (edit this
-                 to move things -- no code changes needed)
-  departures.py  this file: argument parsing + LED matrix rendering
+Files working together (all next to this script unless --layout-dir):
+  api.py          fetching + formatting of the departures/timetable APIs
+  layout/         look of the board, split per page:
+                    shared.json  font roles, named colours, clock,
+                                 page number, progress bar
+                    page1.json   board: lead service, calling-at, rows
+                    page2.json   next departure big + notes
+                    page3.json   formation diagram
+                  Every text line has its font, colour and position here --
+                  edit + rerun, no code changes needed.
+  departures.py   this file: argument parsing + LED matrix rendering
+  preview.py      hardware-free ASCII preview (--preview)
 
 Calls:
   https://peakraildepartures.com/api/departures/?railway=PR&station=RWS&limit=3&date=2026-10-04
@@ -25,9 +32,7 @@ Usage on Pi (3 panels chained):
 Test on Mac / without hardware:
   python3 departures.py --mock --once
   python3 departures.py --mock
-
-Custom look:
-  python3 departures.py --layout-file my-layout.json --mock
+  python3 departures.py --preview          # ASCII map of every page
 """
 
 import argparse
@@ -55,94 +60,205 @@ FONT_ROLES = ("top", "row", "small", "big", "tiny")
 COLOR_NAMES = ("text", "time", "platform", "ok", "alert", "mark")
 
 
-def load_layout(path):
-    """Load + validate layout.json. Exits with a clear message on error."""
-    try:
-        with open(path) as f:
-            raw = json.load(f)
-    except FileNotFoundError:
-        sys.exit(f"layout file not found: {path}")
-    except json.JSONDecodeError as e:
-        sys.exit(f"layout file {path} is not valid JSON: {e}")
-    if not isinstance(raw, dict):
-        sys.exit(f"layout file {path}: top level must be an object")
+def _bad(path, msg):
+    sys.exit(f"layout {path}: {msg}")
 
-    def section(name):
-        sec = raw.get(name)
-        if not isinstance(sec, dict):
-            sys.exit(f"layout file {path}: missing section '{name}'")
-        return sec
 
-    def num(sec_name, key):
-        v = section(sec_name).get(key)
-        if isinstance(v, bool) or not isinstance(v, int):
-            sys.exit(f"layout file {path}: {sec_name}.{key} "
-                     f"must be a whole number of LEDs")
+def _section(raw, path, name):
+    sec = raw.get(name)
+    if not isinstance(sec, dict):
+        _bad(path, f"missing section '{name}'")
+    return sec
+
+
+def _num(sec, path, where, key):
+    v = sec.get(key)
+    if isinstance(v, bool) or not isinstance(v, int):
+        _bad(path, f"{where}.{key} must be a whole number of LEDs")
+    return v
+
+
+def _str(sec, path, where, key):
+    v = sec.get(key)
+    if not isinstance(v, str):
+        _bad(path, f"{where}.{key} must be a string")
+    return v
+
+
+def _xpos(sec, path, where, key="x"):
+    v = sec.get(key, "left")
+    if v in ("left", "center", "right") or type(v) is int:
         return v
+    _bad(path, f"{where}.{key} must be left|center|right|pixels")
 
-    def txt(sec_name, key):
-        v = section(sec_name).get(key)
-        if not isinstance(v, str):
-            sys.exit(f"layout file {path}: {sec_name}.{key} must be a string")
+
+def _ypos(sec, path, where, key="y"):
+    v = sec.get(key)
+    if type(v) is int:
         return v
+    if v == "bottom" or (isinstance(v, str) and v.startswith("bottom-")
+                         and v[7:].isdigit()):
+        return v
+    _bad(path, f"{where}.{key} must be pixels|bottom|bottom-N")
 
+
+def _font(sec, path, where, fonts, key="font"):
+    role = sec.get(key)
+    if role not in fonts:
+        _bad(path, f"{where}.{key} must be one of {sorted(fonts)}")
+    return role
+
+
+def _color(sec, path, where, colors, key="color"):
+    name = sec.get(key)
+    if name not in colors:
+        _bad(path, f"{where}.{key} must be one of {sorted(colors)}")
+    return name
+
+
+def load_layout(layout_dir):
+    """Load layout/*.json with strict validation. Returns resolved dict."""
+    def read(name):
+        path = os.path.join(layout_dir, name)
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            sys.exit(f"layout file not found: {path}")
+        except json.JSONDecodeError as e:
+            sys.exit(f"layout file {path} is not valid JSON: {e}")
+        if not isinstance(data, dict):
+            sys.exit(f"layout file {path}: top level must be an object")
+        return data, path
+
+    raw, path = read("shared.json")
     fonts = {}
-    fsec = section("fonts")
+    fsec = _section(raw, path, "fonts")
     for role in FONT_ROLES:
         name = fsec.get(role)
         if not name or not isinstance(name, str):
-            sys.exit(f"layout file {path}: fonts.{role} must be a filename")
+            _bad(path, f"fonts.{role} must be a filename")
         p = find_font(name)
         if not os.path.exists(p):
-            sys.exit(f"layout file {path}: fonts.{role} not found: {name}")
+            _bad(path, f"fonts.{role} not found: {name}")
         fonts[role] = p
-
     colors = {}
-    csec = section("colors")
+    csec = _section(raw, path, "colors")
     for cname in COLOR_NAMES:
         v = csec.get(cname)
         if (not isinstance(v, list) or len(v) != 3
                 or any(not isinstance(x, int) or x < 0 or x > 255 for x in v)):
-            sys.exit(f"layout file {path}: colors.{cname} "
-                     f"must be [R,G,B] with 0-255 values")
+            _bad(path, f"colors.{cname} must be [R,G,B] with 0-255 values")
         colors[cname] = tuple(v)
 
-    return {
-        "fonts": fonts,
-        "colors": colors,
-        "page1": {
-            "top_dy": num("page1", "top_dy"),
-            "calling_dy": num("page1", "calling_dy"),
-            "row_gap": num("page1", "row_gap"),
-        },
-        "page2": {
-            "dest_dy": num("page2", "dest_dy"),
-            "status_dy": num("page2", "status_dy"),
-            "note_dy": num("page2", "note_dy"),
-        },
-        "page3": {
-            "coach_width": num("page3", "coach_width"),
-            "coach_height": num("page3", "coach_height"),
-            "coach_gap": num("page3", "coach_gap"),
-            "coach_margin": num("page3", "coach_margin"),
-            "slant": num("page3", "slant"),
-            "boxes_dy": num("page3", "boxes_dy"),
-            "labels_dy": num("page3", "labels_dy"),
-            "default_coaches": num("page3", "default_coaches"),
-        },
-        "clock": {
-            "format": txt("clock", "format"),
-            "dy": num("clock", "dy"),
-        },
-        "page_num": {
-            "dy": num("page_num", "dy"),
-        },
-        "progress": {
-            "width": num("progress", "width"),
-            "height": num("progress", "height"),
-            "dy": num("progress", "dy"),
-        },
+    def clock_page_num(sec, path, where):
+        return {"font": _font(sec, path, where, fonts),
+                "color": _color(sec, path, where, colors),
+                "x": _xpos(sec, path, where),
+                "y": _ypos(sec, path, where)}
+
+    L = {"fonts": fonts, "colors": colors}
+    clk = _section(raw, path, "clock")
+    L["clock"] = clock_page_num(clk, path, "clock")
+    L["clock"]["format"] = _str(clk, path, "clock", "format")
+    pgm = _section(raw, path, "page_num")
+    L["page_num"] = clock_page_num(pgm, path, "page_num")
+    prg = _section(raw, path, "progress")
+    L["progress"] = {"color": _color(prg, path, "progress", colors),
+                     "width": _num(prg, path, "progress", "width"),
+                     "height": _num(prg, path, "progress", "height"),
+                     "x": _xpos(prg, path, "progress"),
+                     "y": _ypos(prg, path, "progress")}
+
+    raw1, path1 = read("page1.json")
+    top = _section(raw1, path1, "top")
+    seg = _section(raw1, path1, "segments")
+    for k in ("time", "destination", "platform"):
+        _color(seg, path1, "segments", colors, k)
+    cal = _section(raw1, path1, "calling")
+    if cal.get("show", "top-only") != "top-only":
+        _bad(path1, "calling.show must be 'top-only'")
+    rows = _section(raw1, path1, "rows")
+    L["page1"] = {
+        "top": {"font": _font(top, path1, "top", fonts),
+                "y": _num(top, path1, "top", "y")},
+        "segments": {"time": seg["time"], "destination": seg["destination"],
+                     "platform": seg["platform"]},
+        "calling": {"font": _font(cal, path1, "calling", fonts),
+                    "color": _color(cal, path1, "calling", colors),
+                    "x": _xpos(cal, path1, "calling"),
+                    "show": cal.get("show", "top-only"),
+                    "dy": _num(cal, path1, "calling", "dy")},
+        "rows": {"font": _font(rows, path1, "rows", fonts),
+                 "dy": _num(rows, path1, "rows", "dy"),
+                 "pitch": _num(rows, path1, "rows", "pitch")},
     }
+
+    raw2, path2 = read("page2.json")
+    hl = _section(raw2, path2, "headline")
+    st = _section(raw2, path2, "status")
+    nt = _section(raw2, path2, "note")
+    L["page2"] = {
+        "headline": {"font": _font(hl, path2, "headline", fonts),
+                     "y": _num(hl, path2, "headline", "y"),
+                     "time_color": _color(hl, path2, "headline", colors,
+                                          "time_color"),
+                     "dest_color": _color(hl, path2, "headline", colors,
+                                          "dest_color"),
+                     "dest_dy": _num(hl, path2, "headline", "dest_dy")},
+        "status": {"font": _font(st, path2, "status", fonts),
+                   "dy": _num(st, path2, "status", "dy")},
+        "note": {"font": _font(nt, path2, "note", fonts),
+                 "color": _color(nt, path2, "note", colors),
+                 "dy": _num(nt, path2, "note", "dy")},
+    }
+
+    raw3, path3 = read("page3.json")
+    hh = _section(raw3, path3, "header")
+    ch = _section(raw3, path3, "coach")
+    lt = _section(raw3, path3, "letters")
+    L["page3"] = {
+        "header": {"font": _font(hh, path3, "header", fonts),
+                   "y": _num(hh, path3, "header", "y"),
+                   "time_color": _color(hh, path3, "header", colors,
+                                        "time_color"),
+                   "dest_color": _color(hh, path3, "header", colors,
+                                        "dest_color")},
+        "coach": {"width": _num(ch, path3, "coach", "width"),
+                  "height": _num(ch, path3, "coach", "height"),
+                  "gap": _num(ch, path3, "coach", "gap"),
+                  "margin": _num(ch, path3, "coach", "margin"),
+                  "slant": _num(ch, path3, "coach", "slant"),
+                  "dy": _num(ch, path3, "coach", "dy"),
+                  "outline": _color(ch, path3, "coach", colors, "outline"),
+                  "fill": _color(ch, path3, "coach", colors, "fill"),
+                  "mark": _color(ch, path3, "coach", colors, "mark"),
+                  "mark_off": _color(ch, path3, "coach", colors, "mark_off"),
+                  "default_coaches": _num(ch, path3, "coach",
+                                          "default_coaches")},
+        "letters": {"font": _font(lt, path3, "letters", fonts),
+                    "color": _color(lt, path3, "letters", colors),
+                    "dy": _num(lt, path3, "letters", "dy")},
+    }
+    return L
+
+
+def resolve_x(spec, tw, W):
+    if spec == "left":
+        return 1
+    if spec == "center":
+        return max(1, (W - tw) // 2)
+    if spec == "right":
+        return max(1, W - tw - 1)
+    return spec  # validated int
+
+
+def resolve_y(spec, H):
+    if type(spec) is int:
+        return spec
+    if spec == "bottom":
+        return H - 1
+    return H - int(spec[7:])  # validated bottom-N
 
 
 # ---------------------------------------------------------------------------
@@ -199,15 +315,10 @@ def run_matrix(args, L, get_board_data):
         f = graphics.Font()
         f.LoadFont(L["fonts"][role])
         F[role] = f
-    font, mfont, sfont, bfont, tfont = (
-        F["top"], F["row"], F["small"], F["big"], F["tiny"])
 
     matrix = RGBMatrix(options=options)
 
     C = {name: graphics.Color(*rgb) for name, rgb in L["colors"].items()}
-    amber, yellow, red, green, black = (
-        C["text"], C["time"], C["alert"], C["ok"], C["mark"])
-    platform_c = C["platform"]
 
     offscreen = matrix.CreateFrameCanvas()
     width = offscreen.width
@@ -223,142 +334,162 @@ def run_matrix(args, L, get_board_data):
 
     def status_colors(raw):
         if raw.get("is_cancelled"):
-            return amber, red
+            return C["text"], C["alert"]
         if raw.get("is_delayed"):
-            return amber, red
-        return amber, green
+            return C["text"], C["alert"]
+        return C["text"], C["ok"]
 
     def clock_geom():
         """Live clock text + centered geometry, pinned to the bottom."""
-        s = time.strftime(L["clock"]["format"])
-        w = text_width(graphics, offscreen, sfont, amber, s)
-        return s, max(1, (width - w) // 2), w
+        spec = L["clock"]
+        s = time.strftime(spec["format"])
+        fnt = F[spec["font"]]
+        w = text_width(graphics, offscreen, fnt, C[spec["color"]], s)
+        return s, fnt, resolve_x(spec["x"], w, width), w
 
     def draw_page_num(n):
-        """Page indicator bottom-right. Returns its pixel width."""
+        """Page indicator. Returns its pixel width."""
+        spec = L["page_num"]
         lab = f"{n}/{len(args.pages)}"
-        w = text_width(graphics, offscreen, tfont, amber, lab)
-        graphics.DrawText(offscreen, tfont, width - w - 1,
-                          height + L["page_num"]["dy"], amber, lab)
+        fnt = F[spec["font"]]
+        col = C[spec["color"]]
+        w = text_width(graphics, offscreen, fnt, col, lab)
+        graphics.DrawText(offscreen, fnt, resolve_x(spec["x"], w, width),
+                          resolve_y(spec["y"], height), col, lab)
         return w
 
-    def draw_row(dep, fnt, y_base, clock_x=None, right_extra=0):
-        """Service main line: time + platform yellow, destination orange,
-        status green/red. clock_x caps the destination so it never runs
-        under the centered clock; right_extra reserves pixels on the
-        right (page number)."""
+    def draw_row(dep, fnt, seg, y_base, clock_x=None, right_extra=0):
+        """Service row: time + platform + destination + status."""
         t, dest, status, raw = format_departure(dep)
         status = live_status(raw, args.flip_seconds)
         _, sub_c = status_colors(raw)
         plat = (raw.get("platform") or "").strip()
         plat_part = (plat + " ") if plat else ""
-        right_w = text_width(graphics, offscreen, fnt, amber, plat_part)
+        right_w = text_width(graphics, offscreen, fnt, seg["platform"], plat_part)
         right_w += text_width(graphics, offscreen, fnt, sub_c, status)
         right_w += right_extra
         sub_x = max(1, width - right_w - 1)
         if plat:
             graphics.DrawText(offscreen, fnt, sub_x, y_base,
-                              platform_c, plat_part)
+                              seg["platform"], plat_part)
         graphics.DrawText(offscreen, fnt, sub_x + text_width(
-            graphics, offscreen, fnt, amber, plat_part),
+            graphics, offscreen, fnt, seg["platform"], plat_part),
             y_base, sub_c, status)
         t_part = t + " "
         w_time = graphics.DrawText(offscreen, fnt, 1, y_base,
-                                   yellow, t_part)
+                                   seg["time"], t_part)
         max_dest = sub_x - w_time - 2
         if clock_x is not None:
             max_dest = min(max_dest, clock_x - w_time - 3)
-        dest = fit_text(graphics, offscreen, fnt, amber, dest,
+        dest = fit_text(graphics, offscreen, fnt, seg["destination"], dest,
                         max(0, max_dest))
         graphics.DrawText(offscreen, fnt, 1 + w_time, y_base,
-                          amber, dest)
+                          seg["destination"], dest)
 
-    def draw_calling(dep, y_base):
-        """Calling-at line in the small font, static (truncated to fit)."""
+    def draw_calling(dep, spec, y_base):
+        """Calling-at line, static (truncated to fit)."""
         if dep.get("calling_at"):
-            graphics.DrawText(offscreen, sfont, 1, y_base, amber,
-                              fit_text(graphics, offscreen, sfont, amber,
+            fnt = F[spec["font"]]
+            col = C[spec["color"]]
+            graphics.DrawText(offscreen, fnt, resolve_x(spec["x"], 0, width),
+                              y_base, col,
+                              fit_text(graphics, offscreen, fnt, col,
                                        dep["calling_at"], width - 2))
 
     def draw_full(dep, y0):
         """One departure in full detail, starting at vertical offset y0."""
-        draw_row(dep, font, y0 + 1 + font.baseline)
-        draw_calling(dep, y0 + 1 + font.baseline + sfont.height + 1)
+        seg = {k: C[v] for k, v in L["page1"]["segments"].items()}
+        fnt = F[L["page1"]["top"]["font"]]
+        draw_row(dep, fnt, seg, y0 + 1 + fnt.baseline)
+        draw_calling(dep, {"font": L["page1"]["calling"]["font"],
+                           "color": L["page1"]["calling"]["color"],
+                           "x": "left"},
+                     y0 + 1 + fnt.baseline + F["small"].height + 1)
 
     def draw_page2(dep, page):
-        """Next departure nice and big, with API notes underneath.
-        Live clock bottom-middle, page number bottom-right."""
+        """Next departure nice and big, with API notes underneath."""
+        P2 = L["page2"]
+        bfont = F[P2["headline"]["font"]]
+        sfont = F[P2["status"]["font"]]
         t, dest, _, raw = format_departure(dep)
         _, sub_c = status_colors(raw)
-        plat = (raw.get("platform") or "").strip()
 
-        y_big = bfont.baseline + 1
+        y_big = P2["headline"]["y"]
         t_part = t + " "
         w_time = graphics.DrawText(offscreen, bfont, 1, y_big,
-                                   yellow, t_part)
-        dest = fit_text(graphics, offscreen, bfont, amber, dest,
+                                   C[P2["headline"]["time_color"]], t_part)
+        dest = fit_text(graphics, offscreen, bfont,
+                        C[P2["headline"]["dest_color"]], dest,
                         width - w_time - 1)
         graphics.DrawText(offscreen, bfont, 1 + w_time,
-                          y_big + L["page2"]["dest_dy"], amber, dest)
+                          y_big + P2["headline"]["dest_dy"],
+                          C[P2["headline"]["dest_color"]], dest)
 
         status = live_status(raw, args.flip_seconds)
-        plat_part = (f"Plat {plat} " if plat else "")
-        line2 = plat_part + status
-        y2 = y_big + sfont.height + L["page2"]["status_dy"]
-        graphics.DrawText(offscreen, sfont, 1, y2, sub_c,
-                          fit_text(graphics, offscreen, sfont, sub_c,
+        line2 = status
+        stfont = F[P2["status"]["font"]]
+        y2 = y_big + stfont.height + P2["status"]["dy"]
+        graphics.DrawText(offscreen, stfont, 1, y2, sub_c,
+                          fit_text(graphics, offscreen, stfont, sub_c,
                                    line2, width - 2))
 
-        clock_s, clock_x, clock_w = clock_geom()
+        clock_s, clock_fnt, clock_x, clock_w = clock_geom()
         page_w = draw_page_num(page)
+        nfont = F[P2["note"]["font"]]
+        ncol = C[P2["note"]["color"]]
         notes = list(dep.get("note_lines") or [])
         if not notes and dep.get("calling_at"):
             notes = [dep["calling_at"]]
         if not notes:
             notes = [f"{raw.get('headcode', '')} "
                      f"{raw.get('service_type_name', '')}".strip()]
-        y3 = y2 + sfont.height + L["page2"]["note_dy"]
+        y3 = y2 + nfont.height + P2["note"]["dy"]
         if notes and y3 < height + 1:
-            share3 = y3 >= height - sfont.height
+            share3 = y3 >= height - nfont.height
             cap = min(width - 2, width - page_w - 4)
             if share3:
                 cap = min(cap, clock_x - 3)
-            graphics.DrawText(offscreen, sfont, 1, y3, amber,
-                              fit_text(graphics, offscreen, sfont, amber,
+            graphics.DrawText(offscreen, nfont, 1, y3, ncol,
+                              fit_text(graphics, offscreen, nfont, ncol,
                                        notes[0], max(0, cap)))
-        graphics.DrawText(offscreen, sfont, clock_x,
-                          height + L["clock"]["dy"], amber, clock_s)
+        graphics.DrawText(offscreen, clock_fnt, clock_x,
+                          resolve_y(L["clock"]["y"], height),
+                          C[L["clock"]["color"]], clock_s)
 
     def draw_page3(dep, page):
         """Train formation diagram: fixed-width coach cards, pointy front
-        car, 1ST/wheelchair markers inside, letters underneath.
-        Live clock bottom-middle, page number bottom-right."""
+        car, 1ST/wheelchair markers inside, letters underneath."""
+        P3 = L["page3"]
+        hfont = F[P3["header"]["font"]]
+        sfont = F[P3["letters"]["font"]]
         t, dest, _, raw = format_departure(dep)
         cars, label = formation_of(
-            dep, default_cars=L["page3"]["default_coaches"])
+            dep, default_cars=P3["coach"]["default_coaches"])
         n = len(cars)
 
-        # header in the standard main font, full width (the coach
-        # count is visible from the cards, no room for a side label)
-        y_head = font.baseline
+        # header in the main font, full width
+        y_head = P3["header"]["y"]
         t_part = t + " "
-        w_time = graphics.DrawText(offscreen, font, 1, y_head,
-                                   yellow, t_part)
-        graphics.DrawText(offscreen, font, 1 + w_time, y_head, amber,
-                          fit_text(graphics, offscreen, font, amber, dest,
+        w_time = graphics.DrawText(offscreen, hfont, 1, y_head,
+                                   C[P3["header"]["time_color"]], t_part)
+        graphics.DrawText(offscreen, hfont, 1 + w_time, y_head,
+                          C[P3["header"]["dest_color"]],
+                          fit_text(graphics, offscreen, hfont,
+                                   C[P3["header"]["dest_color"]], dest,
                                    width - w_time - 1))
 
-        # coach cards row: fixed width, left-aligned so the centered
-        # clock and page number never collide with them. First car gets
-        # a pointy (slanted) front. All outlines amber, all fills yellow
-        # at capacity height; class markers inside auto-contrast.
-        P3 = L["page3"]
+        # coach cards row
         margin, gap_b, bh, slant = (
-            P3["coach_margin"], P3["coach_gap"], P3["coach_height"],
-            P3["slant"])
-        bw = P3["coach_width"]
+            P3["coach"]["margin"], P3["coach"]["gap"],
+            P3["coach"]["height"], P3["coach"]["slant"])
+        bw = P3["coach"]["width"]
+        outline = C[P3["coach"]["outline"]]
+        fill = C[P3["coach"]["fill"]]
+        mark = C[P3["coach"]["mark"]]
+        mark_off = C[P3["coach"]["mark_off"]]
+        tfont = F["tiny"]
         x0 = margin
-        y_top = y_head + P3["boxes_dy"]
+        y_top = y_head + P3["coach"]["dy"]
         yb = y_top + bh - 1
 
         def draw_wheelchair(cx, it, col):
@@ -390,110 +521,120 @@ def run_matrix(args, L, get_board_data):
                     else:
                         xs = x + 1
                     for xx in range(xs, x1):
-                        offscreen.SetPixel(xx, yy, yellow.red,
-                                           yellow.green, yellow.blue)
+                        offscreen.SetPixel(xx, yy, fill.red,
+                                           fill.green, fill.blue)
             if i == 0:
-                graphics.DrawLine(offscreen, x, yb, x1, yb, amber)
-                graphics.DrawLine(offscreen, x1, y_top, x1, yb, amber)
+                graphics.DrawLine(offscreen, x, yb, x1, yb, outline)
+                graphics.DrawLine(offscreen, x1, y_top, x1, yb, outline)
                 graphics.DrawLine(offscreen, x + slant, y_top, x1, y_top,
-                                  amber)
-                graphics.DrawLine(offscreen, x, yb, x + slant, y_top, amber)
+                                  outline)
+                graphics.DrawLine(offscreen, x, yb, x + slant, y_top, outline)
             else:
-                graphics.DrawLine(offscreen, x, y_top, x1, y_top, amber)
-                graphics.DrawLine(offscreen, x, yb, x1, yb, amber)
-                graphics.DrawLine(offscreen, x, y_top, x, yb, amber)
-                graphics.DrawLine(offscreen, x1, y_top, x1, yb, amber)
-            # class marker inside (black on fill, amber off fill)
-            mcol = black if fill_h >= bh // 2 else amber
+                graphics.DrawLine(offscreen, x, y_top, x1, y_top, outline)
+                graphics.DrawLine(offscreen, x, yb, x1, yb, outline)
+                graphics.DrawLine(offscreen, x, y_top, x, yb, outline)
+                graphics.DrawLine(offscreen, x1, y_top, x1, yb, outline)
+            # class marker inside (mark on fill, mark_off off fill)
+            mcol = mark if fill_h >= bh // 2 else mark_off
             if car["first"]:
-                mark, mfnt = "1ST", tfont
-                tw = text_width(graphics, offscreen, mfnt, mcol, mark)
-                graphics.DrawText(offscreen, mfnt, cx - tw // 2,
-                                  y_top + bh // 2 + 2, mcol, mark)
+                tw = text_width(graphics, offscreen, tfont, mcol, "1ST")
+                graphics.DrawText(offscreen, tfont, cx - tw // 2,
+                                  y_top + bh // 2 + 2, mcol, "1ST")
             elif car["accessible"]:
                 draw_wheelchair(cx, y_top + 1, mcol)
 
-        clock_s, clock_x, clock_w = clock_geom()
+        clock_s, clock_fnt, clock_x, clock_w = clock_geom()
         page_w = draw_page_num(page)
 
         # carriage letter under each car, centered; baseline may sit on
         # the last row (safe: capitals never descend, canvas clips)
-        y_lab = y_top + bh + sfont.height + L["page3"]["labels_dy"]
+        lcol = C[P3["letters"]["color"]]
+        y_lab = yb + 1 + P3["letters"]["dy"]
         if y_lab <= height:
             for i, car in enumerate(cars):
                 x = x0 + i * (bw + gap_b)
                 letter = "ABCDEFGH"[i] if i < 8 else str(i + 1)
-                lw = text_width(graphics, offscreen, sfont, amber, letter)
+                lw = text_width(graphics, offscreen, sfont, lcol, letter)
                 graphics.DrawText(offscreen, sfont,
                                   x + bw // 2 - lw // 2, y_lab,
-                                  amber, letter)
+                                  lcol, letter)
 
-        graphics.DrawText(offscreen, sfont, clock_x,
-                          height + L["clock"]["dy"], amber, clock_s)
+        graphics.DrawText(offscreen, clock_fnt, clock_x,
+                          resolve_y(L["clock"]["y"], height),
+                          C[L["clock"]["color"]], clock_s)
 
     def draw_progress():
-        """Thin progress bar above the page number: fraction of the
-        page dwell elapsed. Skipped when only one page is configured."""
+        """Progress bar: fraction of the page dwell elapsed. Skipped
+        when only one page is configured."""
         if len(args.pages) < 2:
             return
+        P = L["progress"]
+        pcol = C[P["color"]]
         frac = (time.time() - page_since) / max(0.1, args.page_seconds)
         frac = max(0.0, min(1.0, frac))
-        P = L["progress"]
         bw, bh = P["width"], P["height"]
-        x1, y1 = width - 1, height + P["dy"]
+        x1 = {"left": bw, "center": (width + bw) // 2,
+              "right": width - 1}[P["x"]] if P["x"] in (
+                  "left", "center", "right") else P["x"] + bw - 1
+        y1 = resolve_y(P["y"], height)
         fill = int(bw * frac)
         for yy in range(y1, y1 + bh):  # black backing so it covers text
             for xx in range(x1 - bw + 1, x1 + 1):
                 offscreen.SetPixel(xx, yy, 0, 0, 0)
         for yy in range(y1, y1 + bh):
             for xx in range(x1 - fill + 1, x1 + 1):
-                offscreen.SetPixel(xx, yy, yellow.red,
-                                   yellow.green, yellow.blue)
+                offscreen.SetPixel(xx, yy, pcol.red,
+                                   pcol.green, pcol.blue)
 
     def draw_static(page):
-        # Top service bigger with its calling-at line; the rest compact.
-        # Pitches/gaps from layout.json. Live clock pinned
-        # bottom-middle, page number bottom-right.
+        # Lead service + calling-at, then compact rows on a fixed pitch.
+        # All positions from layout/page1.json.
+        P1 = L["page1"]
         rows = board[:args.limit]
         if not rows:
             return
-        P1 = L["page1"]
-        tight = max(4, sfont.height - 2)  # calling-at pitch base
-        tight_mid = max(4, mfont.height - 2)  # compact row pitch base
-        clock_s, clock_x, clock_w = clock_geom()
+        seg = {k: C[v] for k, v in P1["segments"].items()}
+        rfont = F[P1["rows"]["font"]]
+        clock_s, clock_fnt, clock_x, clock_w = clock_geom()
         page_w = draw_page_num(page)
 
-        y = font.baseline + P1["top_dy"]
-        draw_row(rows[0], font, y)
-        y += tight + P1["calling_dy"]
-        draw_calling(rows[0], y)
-        rest = rows[1:]
+        y = P1["top"]["y"]
+        draw_row(rows[0], F[P1["top"]["font"]], seg, y)
+        cal = P1["calling"]
+        cy = y + cal["dy"]
+        if cal["show"] == "top-only":
+            draw_calling(rows[0], cal, cy)
+        y = cy + P1["rows"]["dy"]
+        pitch = P1["rows"]["pitch"]
         clock_drawn = False
+        rest = rows[1:]
         for n, dep in enumerate(rest):
-            y += tight_mid + P1["row_gap"]
-            if y >= height:
+            yy = y + n * pitch
+            if yy >= height:
                 dropped = len(rest) - n
                 if time.time() - getattr(draw_static, "_warned", 0) > 60:
                     print(f"warning: {dropped} service row(s) off-screen "
-                          f"- fonts too big for {height}px height?",
+                          f"- check layout/page1.json rows/pitch?",
                           file=sys.stderr)
                     draw_static._warned = time.time()
                 break
             last = (n == len(rest) - 1)
-            share = last and y >= height - sfont.height
-            draw_row(dep, mfont, y,
+            share = last and yy >= height - rfont.height
+            draw_row(dep, rfont, seg, yy,
                      clock_x=clock_x if share else None,
                      right_extra=(page_w + 2) if last else 0)
             if last:
                 # clock pinned to the bottom (shares the row on 32px)
-                graphics.DrawText(offscreen, sfont, clock_x,
-                                  y if share else height + L["clock"]["dy"],
-                                  amber, clock_s)
+                graphics.DrawText(offscreen, clock_fnt, clock_x,
+                                  yy if share else resolve_y(
+                                      L["clock"]["y"], height),
+                                  C[L["clock"]["color"]], clock_s)
                 clock_drawn = True
         if not clock_drawn:
-            # rows ran off-screen (fonts too big?) - clock still shows
-            graphics.DrawText(offscreen, sfont, clock_x,
-                              height + L["clock"]["dy"], amber, clock_s)
+            # rows ran off-screen - clock still shows
+            graphics.DrawText(offscreen, clock_fnt, clock_x,
+                              resolve_y(L["clock"]["y"], height),
+                              C[L["clock"]["color"]], clock_s)
 
     while True:
         now = time.time()
@@ -524,8 +665,8 @@ def run_matrix(args, L, get_board_data):
         offscreen.Fill(0, 0, 0)
 
         if not board:
-            graphics.DrawText(offscreen, font, 2, 1 + font.baseline,
-                              red, "No departures")
+            graphics.DrawText(offscreen, F["top"], 2, 1 + F["top"].baseline,
+                              C["alert"], "No departures")
             draw_page_num(args.pages[page_idx % len(args.pages)])
             draw_progress()
         elif (page := args.pages[page_idx % len(args.pages)]) == 2:
@@ -561,9 +702,9 @@ def main():
     p.add_argument("--refresh", type=int, default=20,
                    help="Seconds between API pulls (default 20). The display "
                         "only updates when the data actually changes.")
-    p.add_argument("--layout-file", default=os.path.join(THIS_DIR, "layout.json"),
+    p.add_argument("--layout-dir", default=os.path.join(THIS_DIR, "layout"),
                    help="Fonts, colours, text lines and positions "
-                        "(default layout.json next to the script)")
+                        "(default layout/ next to the script)")
     p.add_argument("--layout", default="static", choices=["rotate", "static"],
                    help="'static': all departures at once, 2 lines each "
                         "(main + calling-at). 'rotate': one full-detail "
@@ -582,6 +723,8 @@ def main():
                    help="Print to console instead of driving the LED matrix")
     p.add_argument("--once", action="store_true",
                    help="Fetch and draw once, then exit")
+    p.add_argument("--preview", action="store_true",
+                   help="ASCII preview of every page (no hardware needed)")
     # Matrix flags (mirrors SampleBase from the examples)
     p.add_argument("--led-rows", type=int, default=32)
     p.add_argument("--led-cols", type=int, default=64)
@@ -620,7 +763,7 @@ def main():
         sys.exit("--pages must be a combination of 1, 2 and 3")
     args.pages = pages
 
-    L = load_layout(args.layout_file)
+    L = load_layout(args.layout_dir)
 
     if args.date == "":
         args.date = None
@@ -629,6 +772,25 @@ def main():
         deps = fetch_departures(args.railway, args.station,
                                 args.limit, args.date)
         return enrich_with_timetables(deps, args.railway, args.date)
+
+    if args.preview:
+        import copy
+        import preview
+        try:
+            board = get_board_data()
+        except Exception as e:
+            sys.exit(f"API fetch failed: {e}")
+        W = args.led_cols * args.led_chain
+        H = args.led_rows
+        for pg in args.pages:
+            rec = preview.install(W, H)
+            a2 = copy.copy(args)
+            a2.pages = [pg]
+            a2.once = True
+            run_matrix(a2, L, lambda: board)
+            print(f"--- page {pg} preview ({W}x{H}) ---")
+            rec.report()
+        return
 
     if args.mock:
         try:

@@ -1,0 +1,25 @@
+{
+  "_comment": "Page 1: departures board. Lead service in the top font with its calling-at line, then compact rows. Rows flow downward: calling sits dy below the lead row, compact rows sit dy below calling and repeat every pitch. Statuses keep green/red automatically.",
+  "top": {
+    "font": "top",
+    "y": 11
+  },
+  "segments": {
+    "_comment": "Colours for the time / destination / platform parts of every service row.",
+    "time": "time",
+    "destination": "text",
+    "platform": "platform"
+  },
+  "calling": {
+    "font": "small",
+    "color": "text",
+    "show": "top-only",
+    "x": "left",
+    "dy": 11
+  },
+  "rows": {
+    "font": "row",
+    "dy": 14,
+    "pitch": 14
+  }
+}

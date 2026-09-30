@@ -1,0 +1,27 @@
+{
+  "_comment": "Page 3: formation diagram. Header at y, coach cards dy below it (fixed width, left-aligned), carriage letters dy below the card bottoms. First car pointy + 1ST inside, accessible car gets the wheelchair icon; letters A,B,C.. centred under each car.",
+  "header": {
+    "font": "top",
+    "y": 13,
+    "time_color": "time",
+    "dest_color": "text"
+  },
+  "coach": {
+    "width": 32,
+    "height": 10,
+    "gap": 3,
+    "margin": 2,
+    "slant": 5,
+    "dy": 1,
+    "outline": "text",
+    "fill": "time",
+    "mark": "mark",
+    "mark_off": "text",
+    "default_coaches": 4
+  },
+  "letters": {
+    "font": "small",
+    "color": "text",
+    "dy": 8
+  }
+}
