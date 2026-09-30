@@ -58,6 +58,8 @@ from api import (
     live_status,
 )
 
+import rtt 
+
 FONT_ROLES = ("top", "row", "small", "big", "tiny")
 COLOR_NAMES = ("text", "time", "platform", "ok", "alert", "mark")
 
@@ -487,11 +489,16 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         if mt != control_mt:
             control_mt = mt
             paused_page = None
+            ctl_source = None
             try:
                 with open(control_path) as f:
-                    pg = json.load(f).get("page")
+                    ctl = json.load(f)
+                pg = ctl.get("page")
                 if pg in (1, 2, 3):
                     paused_page = pg
+                src = ctl.get("source")
+                if src in SOURCES:
+                    ctl_source = src
             except Exception as e:
                 print(f"bad control.json, ignoring: {e}", file=sys.stderr)
         if paused_page != getattr(check_hot, "_announced", "init"):
@@ -838,24 +845,30 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         now = time.time()
         paused = check_hot()
         if now - last_fetch >= args.refresh or not board:
-            try:
-                fresh = get_board_data()
-            except Exception as e:  # keep old data, show error briefly
-                print(f"Fetch failed: {e}", file=sys.stderr)
-                fresh = None
-            if fresh is not None:
-                sig = board_signature(fresh)
-                if sig != last_sig:
-                    # content swaps underneath; the page dwell clock is
-                    # deliberately untouched so progress never restarts
-                    board = fresh
-                    last_sig = sig
-                    idx = 0
-                    idx_since = now
-                # else: data unchanged, keep the current display as-is
-            elif not board:
-                board = []
-            last_fetch = now
+          source = ctl_source or args.source
+          if source != last_source:
+              if last_source is not None:
+                  print(f"data source: {source}", file=sys.stderr, flush=True)
+              last_source = source
+              board, last_sig, last_fetch = [], None, 0
+          interval = (args.refresh if source == "htrs"
+                      else max(args.refresh, args.rtt_refresh))
+          if not board and source == "htrs":
+              interval = min(interval, 5)  # quick retry after a failed pull
+          if now - last_fetch >= interval:
+              try:
+                  fresh = get_board_data(source)
+              except Exception as e:  # keep old data, show error briefly
+                  print(f"Fetch failed ({source}): {e}", file=sys.stderr)
+                  fresh = None
+              if fresh is not None:
+                  sig = board_signature(fresh)
+                  if sig != last_sig:
+                      board = fresh
+                      last_sig = sig
+                      idx = 0
+                      idx_since = now
+              last_fetch = now
 
         held = paused in (1, 2, 3) and not getattr(
             args, "ignore_control", False)
@@ -887,7 +900,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
 
         if not board:
             graphics.DrawText(offscreen, F["top"], 2, 1 + F["top"].baseline,
-                              C["alert"], "No departures")
+                  C["alert"], f"No departures [{source.upper()}]")
             draw_page_chrome(cur_page, frac)
         elif cur_page == 2:
             draw_page2(board[0], cur_page, frac)
@@ -970,6 +983,13 @@ def main():
     p.add_argument("--led-panel-type", default="")
     p.add_argument("--led-inverse", action="store_true",
                    help="Switch if your matrix has inverse colors on.")
+    p.add_argument("--source", default="htrs", choices=SOURCES,
+                   help="Data source at startup; switch live with "
+                        '{"source": "rtt"} in control.json')
+    p.add_argument("--rtt-station", default="MAT",
+                   help="Network Rail station code for RTT mode")
+    p.add_argument("--rtt-refresh", type=int, default=60,
+                   help="Minimum seconds between RTT pulls (default 60)")
     args = p.parse_args()
 
     try:
@@ -985,11 +1005,14 @@ def main():
     if args.date == "":
         args.date = None
 
-    def get_board_data():
+    rtt.set_token(rtt.load_token())
+
+    def get_board_data(source=None):
+        if (source or args.source) == "rtt":
+            return rtt.get_departures(args.rtt_station, args.limit)
         deps = fetch_departures(args.railway, args.station,
                                 args.limit, args.date)
         return enrich_with_timetables(deps, args.railway, args.date)
-
     if args.preview:
         import copy
         import preview
