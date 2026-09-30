@@ -783,7 +783,9 @@ def run_matrix(args, L, get_board_data, layout_dir):
                           file=sys.stderr)
                     draw_static._warned = time.time()
             else:
-                share = yy >= height - rfont.height
+                # share the row only if a separate clock line would hit
+                # it (threshold from the clock font, not the row font)
+                share = yy >= height - clock_fnt.height + 1
                 draw_row(dep, rfont, seg, yy,
                          clock_x=clock_x if share else None,
                          right_extra=page_w + 2)
