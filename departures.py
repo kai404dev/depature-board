@@ -436,6 +436,7 @@ def run_matrix(args, L, get_board_data, layout_dir):
     idx_since = time.time()
     page_idx = 0
     page_since = time.time()
+    was_held = False
 
     control_path = os.path.join(THIS_DIR, "control.json")
 
@@ -845,12 +846,12 @@ def run_matrix(args, L, get_board_data, layout_dir):
             if fresh is not None:
                 sig = board_signature(fresh)
                 if sig != last_sig:
+                    # content swaps underneath; the page dwell clock is
+                    # deliberately untouched so progress never restarts
                     board = fresh
                     last_sig = sig
                     idx = 0
                     idx_since = now
-                    page_idx = 0
-                    page_since = now
                 # else: data unchanged, keep the current display as-is
             elif not board:
                 board = []
@@ -859,11 +860,14 @@ def run_matrix(args, L, get_board_data, layout_dir):
         held = paused in (1, 2, 3) and not getattr(
             args, "ignore_control", False)
         if held:
-            # held from the web UI (control.json): stay put, and restart
-            # the dwell so unpausing begins a full page cycle
+            # held from the web UI (control.json): stay put
             cur_page = paused
-            page_since = now
+            was_held = True
         else:
+            if was_held:
+                # fresh dwell on unpause
+                was_held = False
+                page_since = now
             if len(args.pages) > 1 and now - page_since >= args.page_seconds:
                 page_idx = (page_idx + 1) % len(args.pages)
                 page_since = now
