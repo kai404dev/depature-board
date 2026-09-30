@@ -118,6 +118,27 @@ def departure_status(d):
     return "On time"
 
 
+def expected_time(d):
+    """Expected departure HH:MM for a delayed service.
+
+    Prefers planned_time when it differs from the schedule (amended
+    working), otherwise adds the delay onto the scheduled time.
+    """
+    sched = d.get("scheduled_time") or "??:??"
+    planned = d.get("planned_time") or ""
+    if planned and planned != sched:
+        return planned
+    mins = d.get("delay_minutes", 0) or 0
+    try:
+        h, m = int(sched[0:2]), int(sched[3:5])
+        m += mins
+        h = (h + m // 60) % 24
+        m %= 60
+        return f"{h:02d}:{m:02d}"
+    except ValueError:
+        return sched
+
+
 def format_departure(d):
     """
     Turn one API record into display strings.
@@ -154,6 +175,8 @@ def format_console(departures):
         t, dest, status, raw = format_departure(d)
         plat = raw.get("platform") or ""
         right = ((plat + " ") if plat else "") + status
+        if raw.get("is_delayed") and not raw.get("is_cancelled"):
+            right += f" (Exp {expected_time(raw)})"
         out.append(f"{t} {dest} [{right}]")
         if d.get("calling_at"):
             out.append(f"  {d['calling_at']}")
@@ -261,6 +284,10 @@ def run_matrix(args, get_board_data):
         status green/red. clock_x caps the destination so it never runs
         under the centered clock on the last row."""
         t, dest, status, raw = format_departure(dep)
+        if raw.get("is_delayed") and not raw.get("is_cancelled"):
+            # flip between "Delayed" and the expected time, like real boards
+            if int(time.time() // args.flip_seconds) % 2 == 1:
+                status = f"Exp {expected_time(raw)}"
         _, sub_c = status_colors(raw)
         plat = (raw.get("platform") or "").strip()
         plat_part = (plat + " ") if plat else ""
@@ -390,6 +417,8 @@ def main():
                    help="Seconds per departure in rotate layout (default 5)")
     p.add_argument("--row-gap", type=int, default=2,
                    help="Blank pixels between departures in static layout")
+    p.add_argument("--flip-seconds", type=float, default=3,
+                   help="Seconds per side when flipping Delayed/expected time")
     p.add_argument("--mock", action="store_true",
                    help="Print to console instead of driving the LED matrix")
     p.add_argument("--once", action="store_true",
