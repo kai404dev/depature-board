@@ -5,7 +5,7 @@
     "y": 18,
     "time_color": "time",
     "dest_color": "text",
-    "dest_dy": -3
+    "dest_dy": 0
   },
   "status": {
     "_comment": "Status text only (no platform: it would run under the centred clock).",
