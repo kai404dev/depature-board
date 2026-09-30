@@ -130,13 +130,16 @@ def run_matrix(args, get_departures):
     if args.led_no_drop_privs:
         options.drop_privileges = False
 
-    matrix = RGBMatrix(options=options)
-
+    # Load the font BEFORE creating the matrix: RGBMatrix init drops
+    # root privileges to 'daemon' by default, which may not be able to
+    # read files under e.g. /home/kai afterwards.
     font = graphics.Font()
     if not os.path.exists(args.font):
         sys.exit(f"Font not found: {args.font}\n"
-                 f"Try e.g. --font ../RGB-Matrix-Px-xx/example/Raspberry-Pi/fonts/7x13.bdf")
+                 f"Try e.g. --font ./fonts/7x13.bdf")
     font.LoadFont(args.font)
+
+    matrix = RGBMatrix(options=options)
 
     # Classic departure-board palette
     white = graphics.Color(255, 255, 255)
