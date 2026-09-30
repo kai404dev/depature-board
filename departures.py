@@ -160,6 +160,16 @@ def format_console(departures):
     return "\n".join(out)
 
 
+def board_signature(departures):
+    """Fingerprint of everything shown, to skip redraws when unchanged."""
+    rows = []
+    for d in departures:
+        t, dest, status, raw = format_departure(d)
+        rows.append((t, dest, status, raw.get("platform"),
+                     d.get("calling_at", "")))
+    return json.dumps(rows, sort_keys=True)
+
+
 # ---------------------------------------------------------------------------
 # Matrix rendering (only imported when not in --mock mode)
 # ---------------------------------------------------------------------------
@@ -235,6 +245,7 @@ def run_matrix(args, get_board_data):
 
     board = []
     last_fetch = 0
+    last_sig = None
     idx = 0
     idx_since = time.time()
 
@@ -245,17 +256,16 @@ def run_matrix(args, get_board_data):
             return amber, red
         return amber, green
 
-    def draw_row(dep, fnt, y_base, right_pad=0):
+    def draw_row(dep, fnt, y_base, clock_x=None):
         """Service main line: time + platform yellow, destination orange,
-        status green/red. right_pad reserves pixels on the right
-        (used for the clock on the last row)."""
+        status green/red. clock_x caps the destination so it never runs
+        under the centered clock on the last row."""
         t, dest, status, raw = format_departure(dep)
         _, sub_c = status_colors(raw)
         plat = (raw.get("platform") or "").strip()
         plat_part = (plat + " ") if plat else ""
         right_w = text_width(graphics, offscreen, fnt, amber, plat_part)
         right_w += text_width(graphics, offscreen, fnt, sub_c, status)
-        right_w += right_pad
         sub_x = max(1, width - right_w - 1)
         if plat:
             graphics.DrawText(offscreen, fnt, sub_x, y_base,
@@ -266,8 +276,11 @@ def run_matrix(args, get_board_data):
         t_part = t + " "
         w_time = graphics.DrawText(offscreen, fnt, 1, y_base,
                                    yellow, t_part)
+        max_dest = sub_x - w_time - 2
+        if clock_x is not None:
+            max_dest = min(max_dest, clock_x - w_time - 3)
         dest = fit_text(graphics, offscreen, fnt, amber, dest,
-                        sub_x - w_time - 2)
+                        max(0, max_dest))
         graphics.DrawText(offscreen, fnt, 1 + w_time, y_base,
                           amber, dest)
 
@@ -285,9 +298,9 @@ def run_matrix(args, get_board_data):
 
     def draw_static():
         # Top service bigger with its calling-at line; the rest compact.
-        # 2px (--row-gap) between departures. The live clock shares the
-        # last row, centered (a dedicated clock line does not fit in 32px
-        # alongside 3 services + calling-at).
+        # --row-gap blank pixels between departures. The live clock shares
+        # the last row, centered (a dedicated clock line does not fit in
+        # 32px alongside 3 services + calling-at).
         rows = board[:args.limit]
         if not rows:
             return
@@ -299,7 +312,7 @@ def run_matrix(args, get_board_data):
 
         y = font.baseline
         draw_row(rows[0], font, y)
-        y += tight
+        y += tight + 2  # clear the main line's descenders
         draw_calling(rows[0], y)
         rest = rows[1:]
         for n, dep in enumerate(rest):
@@ -308,7 +321,7 @@ def run_matrix(args, get_board_data):
                 break
             last = (n == len(rest) - 1)
             draw_row(dep, sfont, y,
-                     right_pad=(width - clock_x) if last else 0)
+                     clock_x=clock_x if last else None)
             if last:
                 graphics.DrawText(offscreen, sfont, clock_x, y,
                                   amber, clock_s)
@@ -317,14 +330,21 @@ def run_matrix(args, get_board_data):
         now = time.time()
         if now - last_fetch >= args.refresh or not board:
             try:
-                board = get_board_data()
+                fresh = get_board_data()
             except Exception as e:  # keep old data, show error briefly
                 print(f"Fetch failed: {e}", file=sys.stderr)
-                if not board:
-                    board = []
+                fresh = None
+            if fresh is not None:
+                sig = board_signature(fresh)
+                if sig != last_sig:
+                    board = fresh
+                    last_sig = sig
+                    idx = 0
+                    idx_since = now
+                # else: data unchanged, keep the current display as-is
+            elif not board:
+                board = []
             last_fetch = now
-            idx = 0
-            idx_since = now
 
         offscreen.Fill(0, 0, 0)
 
@@ -353,8 +373,9 @@ def main():
     p.add_argument("--limit", type=int, default=3)
     p.add_argument("--date", default="2026-10-04",
                    help='Operating date YYYY-MM-DD. Use "" for live/next-from-now.')
-    p.add_argument("--refresh", type=int, default=60,
-                   help="Seconds between API calls (default 60)")
+    p.add_argument("--refresh", type=int, default=20,
+                   help="Seconds between API pulls (default 20). The display "
+                        "only updates when the data actually changes.")
     p.add_argument("--font", default=find_font("5x7.bdf"),
                    help="Path to *.bdf font for the top service line "
                         "(default 5x7)")
