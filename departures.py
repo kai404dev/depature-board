@@ -151,8 +151,10 @@ def enrich_with_timetables(departures, railway, fallback_date, timeout=10):
 def format_console(departures):
     out = []
     for d in departures:
-        t, dest, status, _ = format_departure(d)
-        out.append(f"{t} {dest} -- {status}")
+        t, dest, status, raw = format_departure(d)
+        plat = raw.get("platform") or ""
+        right = ((plat + " ") if plat else "") + status
+        out.append(f"{t} {dest} [{right}]")
         if d.get("calling_at"):
             out.append(f"  {d['calling_at']}")
     return "\n".join(out)
@@ -263,6 +265,7 @@ def run_matrix(args, get_board_data):
     idx = 0
     idx_since = time.time()
     scroll_x = width
+    scroll_xs = [width] * max(1, args.limit)
 
     def status_colors(raw):
         if raw.get("is_cancelled"):
@@ -291,32 +294,46 @@ def run_matrix(args, get_board_data):
             graphics.DrawText(offscreen, sfont, 1, y_status, sub_c, status)
         return scroll_x
 
-    def draw_static():
+    def draw_static(scroll_xs):
+        # 6-line look: per departure, main line (time + destination +
+        # platform + status) with a smaller calling-at line beneath.
         row_h = height // max(1, args.limit)
         for i, dep in enumerate(board[:args.limit]):
             y_top = i * row_h
             t, dest, status, raw = format_departure(dep)
-            main_c, sub_c = status_colors(raw)
-            time_c = red if raw.get("is_cancelled") else main_c
-            y_main = y_top + 1 + font.baseline
-            # status right-aligned on the main line, then fit dest around it
-            sub_w = text_width(graphics, offscreen, sfont, sub_c, status)
-            sub_x = max(1, width - sub_w - 1)
-            graphics.DrawText(offscreen, sfont, sub_x, y_main, sub_c, status)
+            cancelled = raw.get("is_cancelled")
+            delayed = raw.get("is_delayed")
+            status_c = red if (cancelled or delayed) else green
+            time_c = dim if cancelled else yellow
+            dest_c = dim if cancelled else white
+
+            y_main = y_top + font.baseline
+            # right part: "1 On time" (platform amber, status green/red)
+            plat = (raw.get("platform") or "").strip()
+            plat_part = (plat + " ") if plat else ""
+            right_w = text_width(graphics, offscreen, font, amber, plat_part)
+            right_w += text_width(graphics, offscreen, font, status_c, status)
+            sub_x = max(1, width - right_w - 1)
+            if plat:
+                graphics.DrawText(offscreen, font, sub_x, y_main,
+                                  amber, plat_part)
+            graphics.DrawText(offscreen, font, sub_x + text_width(
+                graphics, offscreen, font, amber, plat_part),
+                y_main, status_c, status)
+            # left part: "10:00 Matlock Town", fitted around the right part
             t_part = t + " "
             w_time = graphics.DrawText(offscreen, font, 1, y_main,
                                        time_c, t_part)
-            dest = fit_text(graphics, offscreen, font, main_c, dest,
+            dest = fit_text(graphics, offscreen, font, dest_c, dest,
                             sub_x - w_time - 2)
             graphics.DrawText(offscreen, font, 1 + w_time, y_main,
-                              main_c if not raw.get("is_cancelled") else dim,
-                              dest)
-            # calling-at underneath, only if the row is tall enough
-            y_call = y_main + sfont.height + 1
-            if dep.get("calling_at") and height and (y_top + row_h) - y_call >= 3:
-                graphics.DrawText(offscreen, sfont, 1, y_call, amber,
-                                  fit_text(graphics, offscreen, sfont, amber,
-                                           dep["calling_at"], width - 2))
+                              dest_c, dest)
+            # calling-at line beneath, scrolling if too wide
+            y_call = y_main + sfont.height
+            if dep.get("calling_at"):
+                scroll_xs[i] = draw_scrolled(graphics, offscreen, sfont,
+                                             dep["calling_at"], y_call,
+                                             amber, width, scroll_xs[i])
 
     while True:
         now = time.time()
@@ -331,6 +348,7 @@ def run_matrix(args, get_board_data):
             idx = 0
             idx_since = now
             scroll_x = width
+            scroll_xs = [width] * max(1, args.limit)
 
         offscreen.Fill(0, 0, 0)
 
@@ -338,7 +356,7 @@ def run_matrix(args, get_board_data):
             graphics.DrawText(offscreen, font, 2, 1 + font.baseline,
                               red, "No departures")
         elif args.layout == "static":
-            draw_static()
+            draw_static(scroll_xs)
         else:
             if len(board) > 1 and now - idx_since >= args.rotate_seconds:
                 idx = (idx + 1) % len(board)
@@ -362,14 +380,15 @@ def main():
                    help='Operating date YYYY-MM-DD. Use "" for live/next-from-now.')
     p.add_argument("--refresh", type=int, default=60,
                    help="Seconds between API calls (default 60)")
-    p.add_argument("--font", default=find_font("5x7.bdf"),
-                   help="Path to *.bdf font for the main line")
-    p.add_argument("--font-small", default=find_font("4x6.bdf"),
+    p.add_argument("--font", default=find_font("4x6.bdf"),
+                   help="Path to *.bdf font for the main line "
+                        "(default 4x6 fits the 6-line layout on 32px panels)")
+    p.add_argument("--font-small", default=find_font("tom-thumb.bdf"),
                    help="Path to *.bdf font for calling-at / status lines")
-    p.add_argument("--layout", default="rotate", choices=["rotate", "static"],
-                   help="'rotate': one full-detail departure at a time (best for "
-                        "32px-high panels). 'static': all departures at once "
-                        "(needs a taller panel for calling-at lines).")
+    p.add_argument("--layout", default="static", choices=["rotate", "static"],
+                   help="'static': all departures at once, 2 lines each "
+                        "(main + calling-at). 'rotate': one full-detail "
+                        "departure at a time.")
     p.add_argument("--rotate-seconds", type=float, default=5,
                    help="Seconds per departure in rotate layout (default 5)")
     p.add_argument("--mock", action="store_true",
