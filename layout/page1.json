@@ -21,5 +21,10 @@
     "font": "row",
     "dy": 14,
     "pitch": 14
+  },
+  "exp": {
+    "_comment": "Flipped Exp status renders as two parts ( Exp | 10:25 ) in the row font. dx slides the Exp label (0 = snug left of the time), gap spaces label and time.",
+    "dx": 0,
+    "gap": 4
   }
 }

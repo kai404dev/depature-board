@@ -42,6 +42,10 @@ it, compact rows `rows.dy` below calling repeating every `rows.pitch`.
 - `rows` — `{font, dy, pitch}` for services 2+. Rows past the screen
   edge are skipped with a `service row(s) off-screen` warning (max
   once a minute) — if you see it, the fonts/pitch don't fit the panel.
+- `exp` — `{dx, gap}` for a flipped delayed status, rendered as two
+  parts (`Exp` + `10:25`) in the row font. The time stays right-aligned;
+  `dx` slides the `Exp` label (`0` = snug). Expected time = planned
+  time when amended, else scheduled + `delay_minutes`.
 
 ## page2.json (next departure big)
 

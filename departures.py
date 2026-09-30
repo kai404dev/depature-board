@@ -211,6 +211,9 @@ def load_layout(layout_dir, overlay=None):
                  "dy": _num(rows, path1, "rows", "dy"),
                  "pitch": _num(rows, path1, "rows", "pitch")},
     }
+    exp = _section(raw1, path1, "exp")
+    L["page1"]["exp"] = {"dx": _num(exp, path1, "exp", "dx"),
+                         "gap": _num(exp, path1, "exp", "gap")}
 
     raw2, path2 = read("page2.json")
     hl = _section(raw2, path2, "headline")
@@ -526,29 +529,43 @@ def run_matrix(args, L, get_board_data, layout_dir):
         graphics.DrawText(offscreen, fnt, x, y, C["mark"], lab)
 
     def draw_row(dep, fnt, seg, y_base, clock_x=None, right_extra=0):
-        """Service row: time + platform + destination + status. The
-        flipped Exp time uses the small font so it steals less width
-        from the destination."""
+        """Service row: time + platform + destination + status, all in
+        the row font. A flipped Exp renders as two parts -- the Exp
+        label slides by layout exp.dx, the time stays put."""
         t, dest, status, raw = format_departure(dep)
         status = live_status(raw, args.flip_seconds)
         _, sub_c = status_colors(raw)
-        stfnt = (F["small"] if status.startswith("Exp ") else fnt)
+        exp_txt, time_txt = None, status
+        if status.startswith("Exp ") and raw.get("is_delayed"):
+            exp_txt, time_txt = "Exp", status[4:]
+        exp = L["page1"]["exp"]
         plat = (raw.get("platform") or "").strip()
         plat_part = (plat + " ") if plat else ""
-        right_w = text_width(graphics, offscreen, fnt, seg["platform"], plat_part)
-        right_w += text_width(graphics, offscreen, stfnt, sub_c, status)
-        right_w += right_extra
+        plat_w = text_width(graphics, offscreen, fnt, seg["platform"],
+                            plat_part)
+        exp_w = text_width(graphics, offscreen, fnt, sub_c, exp_txt) \
+            if exp_txt else 0
+        time_w = text_width(graphics, offscreen, fnt, sub_c, time_txt)
+        # right-aligned [plat][Exp][time] block; Exp slides by exp.dx
+        # (0 = snug). Destination clears the leftmost ink of the block.
+        right_w = plat_w + time_w + right_extra
+        if exp_txt:
+            right_w += exp_w + exp["gap"]
         sub_x = max(1, width - right_w - 1)
         if plat:
             graphics.DrawText(offscreen, fnt, sub_x, y_base,
                               seg["platform"], plat_part)
-        graphics.DrawText(offscreen, stfnt, sub_x + text_width(
-            graphics, offscreen, fnt, seg["platform"], plat_part),
-            y_base, sub_c, status)
+        time_x = sub_x + plat_w + (exp_w + exp["gap"] if exp_txt else 0)
+        left_ink = sub_x
+        if exp_txt:
+            exp_x = sub_x + plat_w + exp["gap"] + exp["dx"]
+            left_ink = min(sub_x, exp_x)
+            graphics.DrawText(offscreen, fnt, exp_x, y_base, sub_c, exp_txt)
+        graphics.DrawText(offscreen, fnt, time_x, y_base, sub_c, time_txt)
         t_part = t + " "
         w_time = graphics.DrawText(offscreen, fnt, 1, y_base,
                                    seg["time"], t_part)
-        max_dest = sub_x - w_time - 2
+        max_dest = left_ink - w_time - 2
         if clock_x is not None:
             max_dest = min(max_dest, clock_x - w_time - 3)
         dest = fit_text(graphics, offscreen, fnt, seg["destination"], dest,
