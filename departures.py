@@ -116,8 +116,24 @@ def _color(sec, path, where, colors, key="color"):
     return name
 
 
-def load_layout(layout_dir):
-    """Load layout/*.json with strict validation. Returns resolved dict."""
+def deep_merge(base, over):
+    """Recursive overlay: dicts merge key by key, everything else
+    is replaced wholesale."""
+    out = dict(base)
+    for k, v in over.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def load_layout(layout_dir, overlay=None):
+    """Load layout/*.json with strict validation. Returns resolved dict.
+    overlay: optional {filename: dict} merged over the files first --
+    the untracked local.json live overrides use this."""
+    overlay = overlay or {}
+
     def read(name):
         path = os.path.join(layout_dir, name)
         try:
@@ -129,6 +145,8 @@ def load_layout(layout_dir):
             sys.exit(f"layout file {path} is not valid JSON: {e}")
         if not isinstance(data, dict):
             sys.exit(f"layout file {path}: top level must be an object")
+        if isinstance(overlay.get(name), dict):
+            data = deep_merge(data, overlay[name])
         return data, path
 
     raw, path = read("shared.json")
@@ -243,7 +261,28 @@ def load_layout(layout_dir):
     return L
 
 
-LAYOUT_FILES = ("shared.json", "page1.json", "page2.json", "page3.json")
+LAYOUT_FILES = ("shared.json", "page1.json", "page2.json", "page3.json",
+                "local.json")
+
+
+def read_local_overlay(layout_dir):
+    """Untracked live overrides (layout/local.json), sparse sections."""
+    lp = os.path.join(layout_dir, "local.json")
+    if not os.path.exists(lp):
+        return {}
+    try:
+        with open(lp) as f:
+            local = json.load(f)
+    except json.JSONDecodeError as e:
+        sys.exit(f"layout file {lp} is not valid JSON: {e}")
+    if not isinstance(local, dict):
+        sys.exit(f"layout file {lp}: top level must be an object")
+    return {k: v for k, v in local.items() if isinstance(v, dict)}
+
+
+def load_effective_layout(layout_dir):
+    """Tracked defaults overlaid with untracked local.json overrides."""
+    return load_layout(layout_dir, overlay=read_local_overlay(layout_dir))
 
 
 def layout_mtimes(layout_dir):
@@ -267,7 +306,7 @@ def reload_layout_files(graphics, F, C, L, layout_dir, mtimes):
     if cur == mtimes:
         return mtimes, None
     try:
-        new = load_layout(layout_dir)
+        new = load_effective_layout(layout_dir)
     except SystemExit as e:
         return cur, f"layout reload failed, keeping old: {e}"
     for role in FONT_ROLES:
@@ -858,7 +897,7 @@ def main():
         sys.exit("--pages must be a combination of 1, 2 and 3")
     args.pages = pages
 
-    L = load_layout(args.layout_dir)
+    L = load_effective_layout(args.layout_dir)
 
     if args.date == "":
         args.date = None

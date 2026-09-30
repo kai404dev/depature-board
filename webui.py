@@ -31,7 +31,7 @@ sys.path.insert(0, THIS_DIR)
 import api
 import preview
 import departures
-from departures import load_layout
+from departures import deep_merge, load_effective_layout, load_layout
 
 FILES = ("shared.json", "page1.json", "page2.json", "page3.json")
 CACHE_SECS = 20
@@ -104,6 +104,33 @@ def read_layout_files(layout_dir):
         with open(os.path.join(layout_dir, name)) as f:
             data[name] = json.load(f)
     return data
+
+
+def merged_view(layout_dir):
+    """Tracked defaults overlaid with untracked local.json (what the
+    board actually shows)."""
+    data = read_layout_files(layout_dir)
+    lp = os.path.join(layout_dir, "local.json")
+    if os.path.exists(lp):
+        with open(lp) as f:
+            local = json.load(f)
+        for fname in data:
+            if isinstance(local.get(fname), dict):
+                data[fname] = deep_merge(data[fname], local[fname])
+    return data
+
+
+def dig(tree, *keys):
+    """Nested lookup, MISSING when absent."""
+    MISSING = dig.MISSING
+    for k in keys:
+        if not isinstance(tree, dict) or k not in tree:
+            return MISSING
+        tree = tree[k]
+    return tree
+
+
+dig.MISSING = object()
 
 
 def dump_layout(content):
@@ -195,7 +222,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/preview":
             return self._preview(urllib.parse.parse_qs(parsed.query))
-        L = load_layout(_layout_dir)
+        L = load_effective_layout(_layout_dir)
         args = self._args()
         try:
             board = board_now(args.railway, args.station, args.limit,
@@ -211,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
                 rep = f"render error: {e}"
             previews.append(f"<h2>page {p} <small id=\"st{p}\"></small></h2>"
                             f"<pre id=\"pv{p}\">{esc(rep)}</pre>")
-        data = read_layout_files(_layout_dir)
+        data = merged_view(_layout_dir)
         fonts = fonts_available(_layout_dir)
         if not fonts:
             fonts = sorted({v for f in data.values() for s in f.values()
@@ -312,7 +339,7 @@ class Handler(BaseHTTPRequestHandler):
             page = 1
         if page not in (1, 2, 3):
             page = 1
-        L = load_layout(_layout_dir)
+        L = load_effective_layout(_layout_dir)
         args = self._args()
         try:
             board = board_now(args.railway, args.station, args.limit,
@@ -399,59 +426,66 @@ class Handler(BaseHTTPRequestHandler):
         return self.wfile.write(payload)
 
     def _apply_save(self, post):
-        """Apply posted fields to the JSON files. Returns (ok, error)."""
-        data = read_layout_files(_layout_dir)
+        """Apply posted fields as sparse overrides in layout/local.json.
+
+        A value equal to the shipped default is omitted (reverts to
+        default). Returns (ok, error). Tracked files are never touched,
+        so git pull stays clean.
+        """
+        defaults = read_layout_files(_layout_dir)
+        merged = merged_view(_layout_dir)
+        local = {}
         for key, vals in post.items():
             if "|" not in key:
                 continue
             fname, sec, field = key.split("|", 2)
-            if fname not in data or sec not in data[fname]:
+            if fname not in merged or sec not in merged[fname]:
                 continue
-            cur = data[fname][sec].get(field, "")
+            cur = merged[fname][sec].get(field, "")
             v = vals[0]
             if isinstance(cur, bool):
-                data[fname][sec][field] = (v == "true")
+                new = (v == "true")
             elif isinstance(cur, int):
                 try:
-                    data[fname][sec][field] = int(v)
+                    new = int(v)
                 except ValueError:
                     return False, f"{field} must be a whole number"
             elif isinstance(cur, float):
                 try:
-                    data[fname][sec][field] = float(v)
+                    new = float(v)
                 except ValueError:
                     return False, f"{field} must be a number"
             elif (fname == "shared.json" and sec == "colors"
                     and v.startswith("#") and len(v) == 7):
                 try:
-                    data[fname][sec][field] = [
-                        int(v[1:3], 16), int(v[3:5], 16), int(v[5:7], 16)]
+                    new = [int(v[1:3], 16), int(v[3:5], 16),
+                           int(v[5:7], 16)]
                 except ValueError:
                     return False, "bad colour"
             else:
-                data[fname][sec][field] = v
+                new = v
+            default = dig(defaults, fname, sec, field)
+            if new != default:
+                local.setdefault(fname, {}).setdefault(sec, {})[field] = new
 
-        # write to temp copies, validate, then swap in
+        # validate the merged result via temp copies, then swap in
+        # just local.json
         tmp = _layout_dir + ".tmp"
         os.makedirs(tmp, exist_ok=True)
-        for fname, content in data.items():
+        for fname in FILES:
             with open(os.path.join(tmp, fname), "w") as f:
-                f.write(dump_layout(content))
-        # fonts live next to the real layout dir, link them in so the
-        # validator can resolve filenames
-        link = os.path.join(tmp, "fonts")
+                f.write(dump_layout(defaults[fname]))
+        with open(os.path.join(tmp, "local.json"), "w") as f:
+            f.write(dump_layout(dict(
+                _comment="Live overrides from the web UI (untracked). "
+                         "Delete keys or this file to revert to defaults.",
+                **local)))
         try:
-            if not os.path.exists(link):
-                os.symlink(os.path.join(_layout_dir, "fonts"), link)
-        except OSError:
-            pass
-        try:
-            departures.load_layout(tmp)
+            departures.load_effective_layout(tmp)
         except SystemExit as e:
             return False, str(e)
-        for fname in data:
-            os.replace(os.path.join(tmp, fname),
-                       os.path.join(_layout_dir, fname))
+        os.replace(os.path.join(tmp, "local.json"),
+                   os.path.join(_layout_dir, "local.json"))
         return True, ""
 
     def _send(self, body, code=200):
