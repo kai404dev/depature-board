@@ -243,6 +243,48 @@ def load_layout(layout_dir):
     return L
 
 
+LAYOUT_FILES = ("shared.json", "page1.json", "page2.json", "page3.json")
+
+
+def layout_mtimes(layout_dir):
+    m = {}
+    for name in LAYOUT_FILES:
+        try:
+            m[name] = os.path.getmtime(os.path.join(layout_dir, name))
+        except OSError:
+            m[name] = -1
+    return m
+
+
+def reload_layout_files(graphics, F, C, L, layout_dir, mtimes):
+    """Reload layout/*.json into F/C/L in place when files changed.
+
+    Returns (new_mtimes, error). A bad layout keeps the old one but
+    still advances mtimes (retries on the next file change, no spam).
+    New font files that fail to load keep their old font.
+    """
+    cur = layout_mtimes(layout_dir)
+    if cur == mtimes:
+        return mtimes, None
+    try:
+        new = load_layout(layout_dir)
+    except SystemExit as e:
+        return cur, f"layout reload failed, keeping old: {e}"
+    for role in FONT_ROLES:
+        try:
+            f = graphics.Font()
+            f.LoadFont(new["fonts"][role])
+            F[role] = f
+        except Exception as e:
+            print(f"keep old font {role}: {e}", file=sys.stderr)
+    for name, rgb in new["colors"].items():
+        C[name] = graphics.Color(*rgb)
+    L.clear()
+    L.update(new)
+    print("layout reloaded", file=sys.stderr)
+    return cur, None
+
+
 def resolve_x(spec, tw, W):
     if spec == "left":
         return 1
@@ -277,7 +319,7 @@ def fit_text(graphics, canvas, font, color, text, max_w):
     return text
 
 
-def run_matrix(args, L, get_board_data):
+def run_matrix(args, L, get_board_data, layout_dir):
     from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 
     options = RGBMatrixOptions()
@@ -331,6 +373,50 @@ def run_matrix(args, L, get_board_data):
     idx_since = time.time()
     page_idx = 0
     page_since = time.time()
+
+    control_path = os.path.join(THIS_DIR, "control.json")
+
+    layout_mt = layout_mtimes(layout_dir)
+    control_mt = -1
+    paused_page = None
+    last_hot_check = 0.0
+    last_hot_err = None
+
+    def check_hot():
+        """Hot-reload layout/*.json + read pause state.
+
+        Throttled, never fatal: bad files keep the old layout, bad
+        control.json means keep cycling. Returns paused page or None.
+        """
+        nonlocal layout_mt, control_mt, paused_page, last_hot_check
+        nonlocal last_hot_err
+        now = time.time()
+        if now - last_hot_check < 0.5:
+            return paused_page
+        last_hot_check = now
+        layout_mt, err = reload_layout_files(
+            graphics, F, C, L, layout_dir, layout_mt)
+        if err != last_hot_err:
+            last_hot_err = err
+            if err:
+                print(err, file=sys.stderr)
+        try:
+            mt = os.path.getmtime(control_path)
+        except OSError:
+            paused_page = None
+            control_mt = -1
+            return paused_page
+        if mt != control_mt:
+            control_mt = mt
+            paused_page = None
+            try:
+                with open(control_path) as f:
+                    pg = json.load(f).get("page")
+                if pg in (1, 2, 3):
+                    paused_page = pg
+            except Exception as e:
+                print(f"bad control.json, ignoring: {e}", file=sys.stderr)
+        return paused_page
 
     def status_colors(raw):
         if raw.get("is_cancelled"):
@@ -638,6 +724,7 @@ def run_matrix(args, L, get_board_data):
 
     while True:
         now = time.time()
+        paused = check_hot()
         if now - last_fetch >= args.refresh or not board:
             try:
                 fresh = get_board_data()
@@ -658,25 +745,32 @@ def run_matrix(args, L, get_board_data):
                 board = []
             last_fetch = now
 
-        if len(args.pages) > 1 and now - page_since >= args.page_seconds:
-            page_idx = (page_idx + 1) % len(args.pages)
+        if paused in (1, 2, 3):
+            # held from the web UI (control.json): stay put, and restart
+            # the dwell so unpausing begins a full page cycle
+            cur_page = paused
             page_since = now
+        else:
+            if len(args.pages) > 1 and now - page_since >= args.page_seconds:
+                page_idx = (page_idx + 1) % len(args.pages)
+                page_since = now
+            cur_page = args.pages[page_idx % len(args.pages)]
 
         offscreen.Fill(0, 0, 0)
 
         if not board:
             graphics.DrawText(offscreen, F["top"], 2, 1 + F["top"].baseline,
                               C["alert"], "No departures")
-            draw_page_num(args.pages[page_idx % len(args.pages)])
+            draw_page_num(cur_page)
             draw_progress()
-        elif (page := args.pages[page_idx % len(args.pages)]) == 2:
-            draw_page2(board[0], page)
+        elif cur_page == 2:
+            draw_page2(board[0], cur_page)
             draw_progress()
-        elif page == 3:
-            draw_page3(board[0], page)
+        elif cur_page == 3:
+            draw_page3(board[0], cur_page)
             draw_progress()
         elif args.layout == "static":
-            draw_static(page)
+            draw_static(cur_page)
             draw_progress()
         else:
             if len(board) > 1 and now - idx_since >= args.rotate_seconds:
@@ -787,7 +881,7 @@ def main():
             a2 = copy.copy(args)
             a2.pages = [pg]
             a2.once = True
-            run_matrix(a2, L, lambda: board)
+            run_matrix(a2, L, lambda: board, args.layout_dir)
             print(f"--- page {pg} preview ({W}x{H}) ---")
             rec.report()
         return
@@ -841,7 +935,7 @@ def main():
                 pass
         return
 
-    run_matrix(args, L, get_board_data)
+    run_matrix(args, L, get_board_data, args.layout_dir)
 
 
 if __name__ == "__main__":

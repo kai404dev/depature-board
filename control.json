@@ -1,0 +1,4 @@
+{
+  "_comment": "Board control, written by the web UI. page: null = cycle, 1/2/3 = hold.",
+  "page": null
+}

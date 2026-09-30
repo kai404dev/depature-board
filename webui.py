@@ -61,16 +61,40 @@ def render_page(L, board, page, args):
         a2 = copy.copy(args)
         a2.pages = [page]
         a2.once = True
+        a2.layout_dir = _layout_dir
         buf = io.StringIO()
         old = sys.stdout
         sys.stdout = buf
         try:
-            departures.run_matrix(a2, L, lambda: board)
+            departures.run_matrix(a2, L, lambda: board, _layout_dir)
         finally:
             sys.stdout = old
         out = io.StringIO()
         rec.report(out)
         return out.getvalue()
+
+
+def read_control(layout_dir):
+    try:
+        with open(os.path.join(os.path.dirname(layout_dir.rstrip("/")),
+                               "control.json")) as f:
+            pg = json.load(f).get("page")
+            return pg if pg in (1, 2, 3) else None
+    except Exception:
+        return None
+
+
+def write_control(layout_dir, page):
+    tmp = os.path.join(os.path.dirname(layout_dir.rstrip("/")),
+                       "control.json.tmp")
+    final = os.path.join(os.path.dirname(layout_dir.rstrip("/")),
+                         "control.json")
+    with open(tmp, "w") as f:
+        json.dump({"_comment": "Board control, written by the web UI. "
+                               "page: null = cycle, 1/2/3 = hold.",
+                   "page": page}, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, final)
 
 
 def read_layout_files(layout_dir):
@@ -211,10 +235,19 @@ class Handler(BaseHTTPRequestHandler):
                     rows.append(f"<div>{lab} {ctl}</div>")
                 forms.append(f"<fieldset><legend>{esc(fname)} › {esc(sec)}"
                              f"</legend>{''.join(rows)}</fieldset>")
+        held = read_control(_layout_dir)
+        state = (f"holding page {held}" if held else "cycling pages")
+        ctl = "".join(
+            f'<button data-pg="{v}">{t}</button>'
+            for v, t in (("", "cycle"), ("1", "1"), ("2", "2"), ("3", "3")))
         body = (f'<div class="topbar"><h1>departures layout</h1>'
                 f'<span id="live">live</span> <span id="msg"></span>'
                 f'<label><input type="checkbox" id="auto" checked> '
                 f'auto-refresh previews</label></div>'
+                f'<div class="topbar"><span>board: <b id="pstate">{state}'
+                f'</b></span><span id="pgctl">{ctl}</span>'
+                f'<small>layout + pause apply to the real board '
+                f'within ~1s, no restart</small></div>'
                 f'{"".join(previews)}'
                 f'<h2>tweak (saves as you type)</h2>'
                 f'<form method="post" action="/save" id="tweak">'
@@ -256,6 +289,18 @@ class Handler(BaseHTTPRequestHandler):
                 f' clearTimeout(timer);timer=setTimeout(save,600);}});'
                 f'document.getElementById("tweak").addEventListener("change",e=>{{'
                 f' clearTimeout(timer);save();}});'
+                f'document.querySelectorAll("#pgctl button").forEach(b=>{{'
+                f' b.addEventListener("click",async()=>{{'
+                f'  const r=await fetch("/control?json=1",{{method:"POST",'
+                f'   headers:{{"Content-Type":"application/x-www-form-urlencoded"}},'
+                f'   body:"page="+b.dataset.pg}});'
+                f'  const j=await r.json();'
+                f'  if(j.ok){{document.getElementById("pstate").textContent'
+                f'   =j.state;poll();}}'
+                f'  else{{msg.textContent=j.error||"control failed";'
+                f'   msg.className="err";}}'
+                f' }});'
+                f'}});'
                 f'</script>')
         self._send(page_html("layout", body))
 
@@ -288,6 +333,10 @@ class Handler(BaseHTTPRequestHandler):
                 _board = {"at": 0, "data": []}
             return self._redirect("/?saved")
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/control":
+            length = int(self.headers.get("Content-Length", 0))
+            return self._control(urllib.parse.parse_qs(
+                self.rfile.read(length).decode(), keep_blank_values=True))
         if parsed.path != "/save":
             return self._send("not found", 404)
         want_json = "json" in urllib.parse.parse_qs(parsed.query)
@@ -310,6 +359,43 @@ class Handler(BaseHTTPRequestHandler):
                 page_html("layout", f'<p class="err">{esc(err)}</p>'
                                     f'<p><a href="/">back</a></p>'), 400)
         self._redirect("/?saved")
+
+    def _control(self, qs):
+        """Pause control: page=1/2/3 holds, empty resumes cycling."""
+        raw = (qs.get("page") or [""])[0]
+        page = None
+        if raw not in ("", "null", "none", "cycle"):
+            try:
+                page = int(raw)
+            except ValueError:
+                page = "bad"
+            if page not in (1, 2, 3):
+                payload = json.dumps(
+                    {"ok": False,
+                     "error": "page must be empty, 1, 2 or 3"}).encode()
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                return self.wfile.write(payload)
+        with _lock:
+            try:
+                write_control(_layout_dir, page)
+            except OSError as e:
+                payload = json.dumps({"ok": False,
+                                      "error": str(e)}).encode()
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                return self.wfile.write(payload)
+        state = f"holding page {page}" if page else "cycling pages"
+        payload = json.dumps({"ok": True, "state": state}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        return self.wfile.write(payload)
 
     def _apply_save(self, post):
         """Apply posted fields to the JSON files. Returns (ok, error)."""
