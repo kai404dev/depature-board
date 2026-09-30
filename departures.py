@@ -569,6 +569,21 @@ def run_matrix(args, get_board_data):
         graphics.DrawText(offscreen, sfont, clock_x, height - 1,
                           amber, clock_s)
 
+    def draw_progress():
+        """Thin progress bar above the page number: fraction of the
+        page dwell elapsed. Skipped when only one page is configured."""
+        if len(args.pages) < 2:
+            return
+        frac = (time.time() - page_since) / max(0.1, args.page_seconds)
+        frac = max(0.0, min(1.0, frac))
+        bw, bh = 24, 2
+        x1, y1 = width - 1, height - 8
+        fill = int(bw * frac)
+        for yy in range(y1, y1 + bh):
+            for xx in range(x1 - fill + 1, x1 + 1):
+                offscreen.SetPixel(xx, yy, yellow.red,
+                                   yellow.green, yellow.blue)
+
     def draw_static(page):
         # Top service bigger with its calling-at line; the rest compact.
         # --row-gap blank pixels between departures. Live clock pinned
@@ -584,7 +599,7 @@ def run_matrix(args, get_board_data):
 
         y = font.baseline
         draw_row(rows[0], font, y)
-        y += tight + 2  # clear the main line's descenders
+        y += tight + 4  # calling-at sits 2px lower (plus descender clear)
         draw_calling(rows[0], y)
         rest = rows[1:]
         clock_drawn = False
@@ -646,17 +661,22 @@ def run_matrix(args, get_board_data):
             graphics.DrawText(offscreen, font, 2, 1 + font.baseline,
                               red, "No departures")
             draw_page_num(args.pages[page_idx % len(args.pages)])
+            draw_progress()
         elif (page := args.pages[page_idx % len(args.pages)]) == 2:
             draw_page2(board[0], page)
+            draw_progress()
         elif page == 3:
             draw_page3(board[0], page)
+            draw_progress()
         elif args.layout == "static":
             draw_static(page)
+            draw_progress()
         else:
             if len(board) > 1 and now - idx_since >= args.rotate_seconds:
                 idx = (idx + 1) % len(board)
                 idx_since = now
             draw_full(board[idx % len(board)], 0)
+            draw_progress()
 
         offscreen = matrix.SwapOnVSync(offscreen)
 
