@@ -80,6 +80,16 @@ def _num(sec, path, where, key):
     return v
 
 
+def _onum(sec, path, where, key):
+    """Optional whole number, None when absent."""
+    v = sec.get(key)
+    if v is None:
+        return None
+    if isinstance(v, bool) or not isinstance(v, int):
+        _bad(path, f"{where}.{key} must be a whole number of LEDs")
+    return v
+
+
 def _str(sec, path, where, key):
     v = sec.get(key)
     if not isinstance(v, str):
@@ -215,7 +225,12 @@ def load_layout(layout_dir, overlay=None):
     L["page1"]["exp"] = {"dx": _num(exp, path1, "exp", "dx"),
                          "gap": _num(exp, path1, "exp", "gap")}
     pp = _section(raw1, path1, "plat")
-    L["page1"]["plat"] = {"dx": _num(pp, path1, "plat", "dx")}
+    plat_dx = _num(pp, path1, "plat", "dx")
+    L["page1"]["plat"] = {"dx": plat_dx}
+    for _secname, _sec in (("top", top), ("rows", rows)):
+        _pdx = _onum(_sec, path1, _secname, "plat_dx")
+        L["page1"][_secname]["plat_dx"] = \
+            _pdx if _pdx is not None else plat_dx
 
     raw2, path2 = read("page2.json")
     hl = _section(raw2, path2, "headline")
@@ -531,7 +546,8 @@ def run_matrix(args, L, get_board_data, layout_dir):
                                        fill.green, fill.blue)
         graphics.DrawText(offscreen, fnt, x, y, C["mark"], lab)
 
-    def draw_row(dep, fnt, seg, y_base, clock_x=None, right_extra=0):
+    def draw_row(dep, fnt, seg, y_base, clock_x=None, right_extra=0,
+                 plat_dx=0):
         """Service row: time + platform + destination + status, all in
         the row font. A flipped Exp renders as two parts -- the Exp
         label slides by layout exp.dx, the time stays put."""
@@ -555,7 +571,7 @@ def run_matrix(args, L, get_board_data, layout_dir):
         if exp_txt:
             right_w += exp_w + exp["gap"]
         sub_x = max(1, width - right_w - 1)
-        plat_x = sub_x + L["page1"]["plat"]["dx"]
+        plat_x = sub_x + plat_dx
         if plat:
             graphics.DrawText(offscreen, fnt, plat_x, y_base,
                               seg["platform"], plat_part)
@@ -591,7 +607,8 @@ def run_matrix(args, L, get_board_data, layout_dir):
         """One departure in full detail, starting at vertical offset y0."""
         seg = {k: C[v] for k, v in L["page1"]["segments"].items()}
         fnt = F[L["page1"]["top"]["font"]]
-        draw_row(dep, fnt, seg, y0 + 1 + fnt.baseline)
+        draw_row(dep, fnt, seg, y0 + 1 + fnt.baseline,
+                 plat_dx=L["page1"]["top"]["plat_dx"])
         draw_calling(dep, {"font": L["page1"]["calling"]["font"],
                            "color": L["page1"]["calling"]["color"],
                            "x": "left"},
@@ -801,7 +818,8 @@ def run_matrix(args, L, get_board_data, layout_dir):
                 share = yy >= height - clock_fnt.height + 1
                 draw_row(dep, rfont, seg, yy,
                          clock_x=clock_x if share else None,
-                         right_extra=page_w + 2)
+                         right_extra=page_w + 2,
+                         plat_dx=L["page1"]["rows"]["plat_dx"])
                 # clock pinned to the bottom (shares the row on 32px)
                 graphics.DrawText(offscreen, clock_fnt, clock_x,
                                   yy if share else resolve_y(

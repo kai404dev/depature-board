@@ -42,7 +42,8 @@ it, compact rows `rows.dy` below calling repeating every `rows.pitch`.
 - `rows` — `{font, dy, pitch}` for services 2+. Rows past the screen
   edge are skipped with a `service row(s) off-screen` warning (max
   once a minute) — if you see it, the fonts/pitch don't fit the panel.
-- `plat` — `{dx}` slides the platform number like Exp (`0` = snug).
+- `plat` — `{dx}` shared platform slide; `top.plat_dx` /
+  `rows.plat_dx` override it per line (absent = shared value).
 - `exp` — `{dx, gap}` for a flipped delayed status, rendered as two
   parts (`Exp` + `10:25`) in the row font. The time stays right-aligned;
   `dx` slides the `Exp` label (`0` = snug). Expected time = planned
