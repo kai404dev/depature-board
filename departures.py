@@ -404,6 +404,9 @@ def run_matrix(args, L, get_board_data, layout_dir):
     offscreen = matrix.CreateFrameCanvas()
     width = offscreen.width
     height = offscreen.height
+    print(f"board {width}x{height} layout={layout_dir} "
+          f"control={os.path.join(THIS_DIR, 'control.json')} "
+          f"pages={args.pages}", file=sys.stderr, flush=True)
 
     board = []
     last_fetch = 0
@@ -455,6 +458,13 @@ def run_matrix(args, L, get_board_data, layout_dir):
                     paused_page = pg
             except Exception as e:
                 print(f"bad control.json, ignoring: {e}", file=sys.stderr)
+        if paused_page != getattr(check_hot, "_announced", "init"):
+            check_hot._announced = paused_page
+            if paused_page:
+                print(f"control: holding page {paused_page}",
+                      file=sys.stderr, flush=True)
+            else:
+                print("control: cycling pages", file=sys.stderr, flush=True)
         return paused_page
 
     def status_colors(raw):

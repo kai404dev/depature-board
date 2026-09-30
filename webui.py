@@ -212,8 +212,13 @@ button{{font-size:1.1em;margin:.4em .4em .4em 0;padding:.3em 1em}}
 class Handler(BaseHTTPRequestHandler):
     server_version = "BoardTweaker/1.0"
 
-    def log_message(self, *a):
-        pass
+    def log_message(self, fmt, *a):
+        if self.command == "GET" and self.path.startswith("/preview"):
+            return  # polled every few seconds, too noisy
+        sys.stderr.write("%s %s %s\n" % (
+            time.strftime("%H:%M:%S"), self.command,
+            self.path.split("?")[0]))
+        sys.stderr.flush()
 
     def _args(self):
         return self.server.board_args
@@ -375,6 +380,12 @@ class Handler(BaseHTTPRequestHandler):
             ok, err = self._apply_save(post)
             if ok:
                 _board = {"at": 0, "data": []}
+        nfields = sum(1 for k in post if "|" in k)
+        sys.stderr.write(
+            "%s SAVE %d fields -> %s\n"
+            % (time.strftime("%H:%M:%S"), nfields,
+               "ok" if ok else f"REJECTED {err}"))
+        sys.stderr.flush()
         if want_json:
             payload = json.dumps({"ok": ok, "error": err}).encode()
             self.send_response(200 if ok else 400)
@@ -418,6 +429,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return self.wfile.write(payload)
         state = f"holding page {page}" if page else "cycling pages"
+        sys.stderr.write("%s CONTROL -> %s\n"
+                         % (time.strftime("%H:%M:%S"), state))
+        sys.stderr.flush()
         payload = json.dumps({"ok": True, "state": state}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
