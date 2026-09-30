@@ -176,16 +176,6 @@ def fit_text(graphics, canvas, font, color, text, max_w):
     return text
 
 
-def draw_main_line(graphics, canvas, font, t, dest, y, width,
-                   time_color, dest_color):
-    """Two-tone '10:00 Matlock Town' line, destination truncated to fit."""
-    t_part = t + " "
-    w_time = graphics.DrawText(canvas, font, 1, y, time_color, t_part)
-    dest = fit_text(graphics, canvas, font, dest_color, dest,
-                    width - w_time - 1)
-    graphics.DrawText(canvas, font, 1 + w_time, y, dest_color, dest)
-
-
 def run_matrix(args, get_board_data):
     from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 
@@ -232,8 +222,11 @@ def run_matrix(args, get_board_data):
 
     matrix = RGBMatrix(options=options)
 
-    # Classic departure-board palette: everything orange bar the status
+    # Classic departure-board palette: everything orange bar the status;
+    # time white, platform yellow.
     amber = graphics.Color(255, 140, 0)
+    white = graphics.Color(255, 255, 255)
+    yellow = graphics.Color(255, 255, 0)
     red = graphics.Color(255, 30, 30)
     green = graphics.Color(60, 255, 60)
 
@@ -253,60 +246,65 @@ def run_matrix(args, get_board_data):
             return amber, red
         return amber, green
 
-    def draw_full(dep, y0):
-        """One departure in full detail, starting at vertical offset y0."""
+    def draw_row(dep, fnt, y_base):
+        """Service main line: time white, destination orange,
+        platform yellow, status green/red."""
         t, dest, status, raw = format_departure(dep)
-        main_c, sub_c = status_colors(raw)
+        _, sub_c = status_colors(raw)
+        plat = (raw.get("platform") or "").strip()
+        plat_part = (plat + " ") if plat else ""
+        right_w = text_width(graphics, offscreen, fnt, amber, plat_part)
+        right_w += text_width(graphics, offscreen, fnt, sub_c, status)
+        sub_x = max(1, width - right_w - 1)
+        if plat:
+            graphics.DrawText(offscreen, fnt, sub_x, y_base,
+                              yellow, plat_part)
+        graphics.DrawText(offscreen, fnt, sub_x + text_width(
+            graphics, offscreen, fnt, amber, plat_part),
+            y_base, sub_c, status)
+        t_part = t + " "
+        w_time = graphics.DrawText(offscreen, fnt, 1, y_base,
+                                   white, t_part)
+        dest = fit_text(graphics, offscreen, fnt, amber, dest,
+                        sub_x - w_time - 2)
+        graphics.DrawText(offscreen, fnt, 1 + w_time, y_base,
+                          amber, dest)
 
-        y_main = y0 + 1 + font.baseline
-        draw_main_line(graphics, offscreen, font, t, dest, y_main,
-                       width, main_c, main_c)
-
-        y_call = y_main + sfont.height + 1
+    def draw_calling(dep, y_base):
+        """Calling-at line in the small font, static (truncated to fit)."""
         if dep.get("calling_at"):
-            graphics.DrawText(offscreen, sfont, 1, y_call, amber,
+            graphics.DrawText(offscreen, sfont, 1, y_base, amber,
                               fit_text(graphics, offscreen, sfont, amber,
                                        dep["calling_at"], width - 2))
-        y_status = y_call + sfont.height + 1
-        if y_status < height:
-            graphics.DrawText(offscreen, sfont, 1, y_status, sub_c, status)
+
+    def draw_clock():
+        """Live clock centered at the bottom of the screen."""
+        now_s = time.strftime("%H:%M:%S")
+        w = text_width(graphics, offscreen, sfont, amber, now_s)
+        graphics.DrawText(offscreen, sfont, max(1, (width - w) // 2),
+                          height - 1, amber, now_s)
+
+    def draw_full(dep, y0):
+        """One departure in full detail, starting at vertical offset y0."""
+        draw_row(dep, font, y0 + 1 + font.baseline)
+        draw_calling(dep, y0 + 1 + font.baseline + sfont.height + 1)
 
     def draw_static():
-        # 6-line look: per departure, main line (time + destination +
-        # platform + status) with a smaller calling-at line beneath.
-        row_h = height // max(1, args.limit)
-        for i, dep in enumerate(board[:args.limit]):
-            y_top = i * row_h
-            t, dest, status, raw = format_departure(dep)
-            _, sub_c = status_colors(raw)
-
-            y_main = y_top + font.baseline
-            # right part: "1 On time" (platform amber, status green/red)
-            plat = (raw.get("platform") or "").strip()
-            plat_part = (plat + " ") if plat else ""
-            right_w = text_width(graphics, offscreen, font, amber, plat_part)
-            right_w += text_width(graphics, offscreen, font, sub_c, status)
-            sub_x = max(1, width - right_w - 1)
-            if plat:
-                graphics.DrawText(offscreen, font, sub_x, y_main,
-                                  amber, plat_part)
-            graphics.DrawText(offscreen, font, sub_x + text_width(
-                graphics, offscreen, font, amber, plat_part),
-                y_main, sub_c, status)
-            # left part: "10:00 Matlock Town", fitted around the right part
-            t_part = t + " "
-            w_time = graphics.DrawText(offscreen, font, 1, y_main,
-                                       amber, t_part)
-            dest = fit_text(graphics, offscreen, font, amber, dest,
-                            sub_x - w_time - 2)
-            graphics.DrawText(offscreen, font, 1 + w_time, y_main,
-                              amber, dest)
-            # calling-at line beneath, static (truncated to fit)
-            y_call = y_main + sfont.height
-            if dep.get("calling_at"):
-                graphics.DrawText(offscreen, sfont, 1, y_call, amber,
-                                  fit_text(graphics, offscreen, sfont, amber,
-                                           dep["calling_at"], width - 2))
+        # Top service bigger with its calling-at line; the rest compact.
+        # Live clock centered at the bottom.
+        rows = board[:args.limit]
+        if not rows:
+            return
+        y = font.baseline
+        draw_row(rows[0], font, y)
+        y += sfont.height
+        draw_calling(rows[0], y)
+        for dep in rows[1:]:
+            y += sfont.height
+            if y >= height - sfont.height:
+                break
+            draw_row(dep, sfont, y)
+        draw_clock()
 
     while True:
         now = time.time()
@@ -350,11 +348,12 @@ def main():
                    help='Operating date YYYY-MM-DD. Use "" for live/next-from-now.')
     p.add_argument("--refresh", type=int, default=60,
                    help="Seconds between API calls (default 60)")
-    p.add_argument("--font", default=find_font("4x6.bdf"),
-                   help="Path to *.bdf font for the main line "
-                        "(default 4x6 fits the 6-line layout on 32px panels)")
-    p.add_argument("--font-small", default=find_font("tom-thumb.bdf"),
-                   help="Path to *.bdf font for calling-at / status lines")
+    p.add_argument("--font", default=find_font("5x7.bdf"),
+                   help="Path to *.bdf font for the top service line "
+                        "(default 5x7)")
+    p.add_argument("--font-small", default=find_font("4x6.bdf"),
+                   help="Path to *.bdf font for other services, "
+                        "calling-at and clock lines")
     p.add_argument("--layout", default="static", choices=["rotate", "static"],
                    help="'static': all departures at once, 2 lines each "
                         "(main + calling-at). 'rotate': one full-detail "
