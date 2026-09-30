@@ -101,7 +101,15 @@ class FakeCanvas:
         pass
 
     def SetPixel(self, x, y, r, g, b):
-        self._rec.pixel(x, y, structural=True)
+        self._rec.spixel(x, y, r, g, b)
+
+
+def _rgb(color):
+    try:
+        return (int(color.red) & 255, int(color.green) & 255,
+                int(color.blue) & 255)
+    except Exception:
+        return (255, 140, 0)
 
 
 class Recorder:
@@ -116,7 +124,8 @@ class Recorder:
         self.width = width
         self.height = height
         self.grid = {}  # (x, y) -> set((op id, structural))
-        self.ops = []   # (id, kind, label, rect)
+        self.paint = {}  # (x, y) -> (r, g, b), last write wins
+        self.ops = []   # (id, kind, label, rect, rgb-or-None)
         self._n = 0
         self._cur = ("*", True)
 
@@ -132,28 +141,44 @@ class Recorder:
                 struct = structural
             self.grid.setdefault((x, y), set()).add((oid, struct))
 
-    def line(self, x0, y0, x1, y1):
+    def spixel(self, x, y, r, g, b):
+        """Exact painted pixel (fills): true colour + structural tag."""
+        if 0 <= x < self.width and 0 <= y < self.height:
+            self.paint[(x, y)] = (r, g, b)
+            self.grid.setdefault((x, y), set()).add((self._cur[0], True))
+
+    def line(self, x0, y0, x1, y1, color=None):
         oid = self._next_id()
         self._cur = (oid, True)
+        rgb = _rgb(color) if color is not None else None
         self.ops.append((oid, "line", f"{x0},{y0}->{x1},{y1}",
                          (min(x0, x1), min(y0, y1),
-                          max(x0, x1), max(y0, y1))))
+                          max(x0, x1), max(y0, y1)), rgb))
         dx, dy = abs(x1 - x0), abs(y1 - y0)
         n = max(dx, dy)
         for i in range(n + 1):
             t = i / max(1, n)
-            self.pixel(round(x0 + (x1 - x0) * t),
-                       round(y0 + (y1 - y0) * t))
+            xx = round(x0 + (x1 - x0) * t)
+            yy = round(y0 + (y1 - y0) * t)
+            self.pixel(xx, yy)
+            if rgb is not None and 0 <= xx < self.width \
+                    and 0 <= yy < self.height:
+                self.paint[(xx, yy)] = rgb
 
-    def circle(self, x, y, r):
+    def circle(self, x, y, r, color=None):
         oid = self._next_id()
         self._cur = (oid, True)
+        rgb = _rgb(color) if color is not None else None
         self.ops.append((oid, "circle", f"c{x},{y} r{r}",
-                         (x - r, y - r, x + r, y + r)))
+                         (x - r, y - r, x + r, y + r), rgb))
         import math
         for a in range(0, 360, 5):
-            self.pixel(round(x + r * math.cos(math.radians(a))),
-                       round(y + r * math.sin(math.radians(a))))
+            xx = round(x + r * math.cos(math.radians(a)))
+            yy = round(y + r * math.sin(math.radians(a)))
+            self.pixel(xx, yy)
+            if rgb is not None and 0 <= xx < self.width \
+                    and 0 <= yy < self.height:
+                self.paint[(xx, yy)] = rgb
 
     def text(self, font, x, y, s):
         # Ink rows approximated as caps + one descender row (drops the
@@ -165,13 +190,48 @@ class Recorder:
                 self.pixel(xx, yy)
         return w
 
-    def text_op(self, font, x, y, s):
+    def text_op(self, font, x, y, s, color=None):
         oid = self._next_id()
         self._cur = (oid, False)
         w = font.text_width(s)
         self.ops.append((oid, "text", f"{os.path.basename(font.path or '?')} "
                                       f"'{s[:24]}'",
-                         (x, y - font.height + 3, x + w - 1, y + 1)))
+                         (x, y - font.height + 3, x + w - 1, y + 1),
+                         _rgb(color) if color is not None else None))
+
+    def png(self):
+        """True-colour PNG bytes: exact lines/fills, text as outlines."""
+        import struct
+        import zlib
+        W, H = self.width, self.height
+        rows = [bytearray(3 * W) for _ in range(H)]
+        for (x, y), (r, g, b) in self.paint.items():
+            rows[y][3 * x:3 * x + 3] = bytes((r, g, b))
+
+        def dot(xx, yy, rgb):
+            if 0 <= xx < W and 0 <= yy < H:
+                rows[yy][3 * xx:3 * xx + 3] = bytes(rgb)
+
+        for oid, kind, label, rect, rgb in self.ops:
+            if kind != "text" or rgb is None:
+                continue
+            x0, y0, x1, y1 = rect
+            for xx in range(max(0, x0), min(W, x1 + 1)):
+                dot(xx, y0, rgb)
+                dot(xx, y1, rgb)
+            for yy in range(max(0, y0), min(H, y1 + 1)):
+                dot(x0, yy, rgb)
+                dot(x1, yy, rgb)
+
+        def chunk(t, d):
+            return (struct.pack(">I", len(d)) + t + d
+                    + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff))
+
+        ihdr = struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0)
+        raw = b"".join(b"\x00" + bytes(r) for r in rows)
+        return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+                + chunk(b"IDAT", zlib.compress(bytes(raw)))
+                + chunk(b"IEND", b""))
 
     def report(self, out=None):
         out = out or sys.stdout
@@ -194,7 +254,7 @@ class Recorder:
         for row in cells:
             print("|" + "".join(row) + "|", file=out)
         print("+" + "-" * W + "+", file=out)
-        for oid, kind, label, rect in self.ops:
+        for oid, kind, label, rect, _rgb_ in self.ops:
             x0, y0, x1, y1 = rect
             print(f"  {oid} [{kind}] {label} x{x0}..{x1} y{y0}..{y1}",
                   file=out)
@@ -236,15 +296,15 @@ class FakeGraphics:
             text = text.decode("utf-8", "replace")
         if y < 0:
             return font.text_width(text)  # offscreen measure, don't record
-        self._rec.text_op(font, x, y, text)
+        self._rec.text_op(font, x, y, text, color)
         self._rec.text(font, x, y, text)
         return font.text_width(text)
 
     def DrawLine(self, canvas, x0, y0, x1, y1, color):
-        self._rec.line(x0, y0, x1, y1)
+        self._rec.line(x0, y0, x1, y1, color)
 
     def DrawCircle(self, canvas, x, y, r, color):
-        self._rec.circle(x, y, r)
+        self._rec.circle(x, y, r, color)
 
 
 class FakeMatrix:

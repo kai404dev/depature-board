@@ -75,6 +75,28 @@ def render_page(L, board, page, args):
         return out.getvalue()
 
 
+def render_png(L, board, page, args):
+    """Render one page to PNG bytes via the fake matrix."""
+    import departures
+    W = args.led_cols * args.led_chain
+    H = args.led_rows
+    with _lock:
+        rec = preview.install(W, H)
+        a2 = copy.copy(args)
+        a2.pages = [page]
+        a2.once = True
+        a2.ignore_control = True
+        a2.layout_dir = _layout_dir
+        buf = io.StringIO()
+        old = sys.stdout
+        sys.stdout = buf
+        try:
+            departures.run_matrix(a2, L, lambda: board, _layout_dir)
+        finally:
+            sys.stdout = old
+        return rec.png()
+
+
 def read_control(layout_dir):
     try:
         with open(os.path.join(os.path.dirname(layout_dir.rstrip("/")),
@@ -173,9 +195,17 @@ def field_html(fname, sec, key, val, fonts):
         sel = lambda b, t: f'<option {"selected" if b else ""}>{t}</option>'
         ctl = (f'<select name="{esc(name)}">'
                f'{sel(val, "true")}{sel(not val, "false")}</select>')
-    elif isinstance(val, int):
-        ctl = (f'<input type="number" step="1" name="{esc(name)}" '
-               f'value="{val}" style="width:5em">')
+    elif isinstance(val, int) and not isinstance(val, bool):
+        kl = key.lower()
+        if "width" in kl:
+            lo, hi = 0, 192
+        elif "height" in kl:
+            lo, hi = 0, 32
+        else:
+            lo, hi = -32, 64
+        ctl = (f'<input type="range" min="{lo}" max="{hi}" step="1" '
+               f'name="{esc(name)}" value="{val}" data-out="o-{esc(name)}">'
+               f' <output id="o-{esc(name)}">{val}</output>')
     elif isinstance(val, float):
         ctl = (f'<input type="number" step="any" name="{esc(name)}" '
                f'value="{val}" style="width:5em">')
@@ -202,6 +232,13 @@ fieldset{{border:1px solid #444;padding:.5em}}
 legend{{color:#ff0}}
 label{{display:inline-block;min-width:9em;color:#8cf}}
 input,select{{background:#222;color:#fff;border:1px solid #555}}
+input[type=range]{{width:150px;vertical-align:middle;accent-color:#ff0}}
+output{{color:#ff0;min-width:3em;display:inline-block}}
+.pviews{{display:flex;gap:1em;flex-wrap:wrap;align-items:flex-start}}
+.pviews figure{{margin:0;flex:1 1 300px;min-width:280px;max-width:640px}}
+.pviews img{{width:100%;image-rendering:pixelated;background:#000;
+ border:1px solid #444}}
+.pviews figcaption{{color:#ff0;margin-bottom:.2em}}
 button{{font-size:1.1em;margin:.4em .4em .4em 0;padding:.3em 1em}}
 .err{{color:#f66}} .ok{{color:#6f6}} small{{color:#888}}
 #live{{color:#6f6;border:1px solid #6f6;padding:0 .4em;font-size:.8em}}
@@ -227,22 +264,22 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/preview":
             return self._preview(urllib.parse.parse_qs(parsed.query))
-        L = load_effective_layout(_layout_dir)
-        args = self._args()
+        if parsed.path == "/preview.png":
+            return self._preview_png(urllib.parse.parse_qs(parsed.query))
         try:
-            board = board_now(args.railway, args.station, args.limit,
-                              args.date or None)
-        except Exception as e:
-            body = f'<h1>departures layout</h1><p class="err">API error: {esc(e)}</p>'
+            load_effective_layout(_layout_dir)
+        except SystemExit as e:
+            body = (f'<h1>departures layout</h1>'
+                    f'<p class="err">layout error: {esc(e)}</p>'
+                    f'<p>fix <code>layout/</code> or delete '
+                    f'<code>layout/local.json</code> to reset</p>')
             return self._send(page_html("layout", body))
         previews = []
         for p in (1, 2, 3):
-            try:
-                rep = render_page(L, board, p, args)
-            except Exception as e:
-                rep = f"render error: {e}"
-            previews.append(f"<h2>page {p} <small id=\"st{p}\"></small></h2>"
-                            f"<pre id=\"pv{p}\">{esc(rep)}</pre>")
+            previews.append(f"<figure><figcaption>page {p}</figcaption>"
+                            f"<img id=\"pvg{p}\" "
+                            f"src=\"/preview.png?page={p}\" "
+                            f"alt=\"page {p} preview\"></figure>")
         data = merged_view(_layout_dir)
         fonts = fonts_available(_layout_dir)
         if not fonts:
@@ -281,7 +318,7 @@ class Handler(BaseHTTPRequestHandler):
                 f'</b></span><span id="pgctl">{ctl}</span>'
                 f'<small>layout + pause apply to the real board '
                 f'within ~1s, no restart</small></div>'
-                f'{"".join(previews)}'
+                f'<div class="pviews">{"".join(previews)}</div>'
                 f'<h2>tweak (saves as you type)</h2>'
                 f'<form method="post" action="/save" id="tweak">'
                 f'{"".join(forms)}'
@@ -291,10 +328,10 @@ class Handler(BaseHTTPRequestHandler):
                 f'let timer=null;'
                 f'async function poll(){{'
                 f' if(!document.getElementById("auto").checked)return;'
+                f' const t=Date.now();'
                 f' for(const p of [1,2,3]){{'
-                f'  try{{const r=await fetch("/preview?page="+p);'
-                f'   if(r.ok)document.getElementById("pv"+p).textContent'
-                f'    =await r.text();}}catch(e){{}}'
+                f'  try{{document.getElementById("pvg"+p).src='
+                f'   "/preview.png?page="+p+"&t="+t;}}catch(e){{}}'
                 f' }}'
                 f'}}'
                 f'setInterval(poll,3000);'
@@ -319,7 +356,11 @@ class Handler(BaseHTTPRequestHandler):
                 f'}}'
                 f'clearTimeout(timer);'
                 f'document.getElementById("tweak").addEventListener("input",e=>{{'
-                f' clearTimeout(timer);timer=setTimeout(save,600);}});'
+                f' clearTimeout(timer);'
+                f' const t=e.target;'
+                f' if(t.dataset&&t.dataset.out)'
+                f'  document.getElementById(t.dataset.out).textContent=t.value;'
+                f' timer=setTimeout(save,600);}});'
                 f'document.getElementById("tweak").addEventListener("change",e=>{{'
                 f' clearTimeout(timer);save();}});'
                 f'document.querySelectorAll("#pgctl button").forEach(b=>{{'
@@ -358,6 +399,33 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
+
+    def _preview_png(self, qs):
+        try:
+            page = int((qs.get("page") or ["1"])[0])
+        except ValueError:
+            page = 1
+        if page not in (1, 2, 3):
+            page = 1
+        L = load_effective_layout(_layout_dir)
+        args = self._args()
+        try:
+            board = board_now(args.railway, args.station, args.limit,
+                              args.date or None)
+            img = render_png(L, board, page, args)
+        except Exception as e:
+            img = None
+            print(f"png render error: {e}", file=sys.stderr)
+        if img is None:
+            self.send_response(500)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(img)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(img)
 
     def do_POST(self):
         global _board
