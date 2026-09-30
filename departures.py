@@ -558,9 +558,10 @@ def run_matrix(args, get_board_data):
         clock_s, clock_x, clock_w = clock_geom()
         page_w = draw_page_num(page)
 
-        # carriage letter under each car, centered (tight pitch: -2)
-        y_lab = y_top + bh + sfont.height - 2
-        if y_lab < height:
+        # carriage letter under each car, centered; baseline may sit on
+        # the last row (safe: capitals never descend, canvas clips)
+        y_lab = y_top + bh + sfont.height - 1
+        if y_lab <= height:
             for i, car in enumerate(cars):
                 x = x0 + i * (bw + gap_b)
                 letter = "ABCDEFGH"[i] if i < 8 else str(i + 1)
@@ -603,7 +604,7 @@ def run_matrix(args, get_board_data):
         clock_s, clock_x, clock_w = clock_geom()
         page_w = draw_page_num(page)
 
-        y = font.baseline
+        y = font.baseline - 2  # top service sits 2px higher
         draw_row(rows[0], font, y)
         y += tight + 4  # calling-at sits 2px lower (plus descender clear)
         draw_calling(rows[0], y)
