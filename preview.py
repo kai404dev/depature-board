@@ -8,7 +8,7 @@ pixel grid, plus a minimal BDF reader for real font metrics
 (baseline/height/advances -- same formulas as lib/bdf-font.cc).
 
 Install into sys.modules, run one frame, then dump an ASCII map of the
-192x32 (or configured) screen plus per-element bounds and any rows
+240x40 (or configured) screen plus per-element bounds and any rows
 where elements overlap.
 """
 

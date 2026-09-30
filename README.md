@@ -41,7 +41,7 @@ python3 departures.py --mock --once   # check the API data first
 Run the board (needs root for GPIO; use your working flags):
 
 ```bash
-sudo .venv/bin/python departures.py --led-rows 32 --led-cols 64 --led-chain 3 --led-no-hardware-pulse
+sudo .venv/bin/python departures.py --led-rows 40 --led-cols 80 --led-chain 3 --led-no-hardware-pulse
 ```
 
 Web UI (no root needed):
@@ -64,7 +64,7 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/home/kai/depature-board
-ExecStart=/home/kai/depature-board/.venv/bin/python departures.py --led-no-hardware-pulse --led-rows 32 --led-cols 64 --led-chain 3
+ExecStart=/home/kai/depature-board/.venv/bin/python departures.py --led-no-hardware-pulse --led-rows 40 --led-cols 80 --led-chain 3
 Restart=always
 RestartSec=5
 
@@ -122,7 +122,7 @@ git status --short              # layout/*.json must be CLEAN (edits live in loc
 ps aux | grep "[d]epartures.py" # one process, from ~/depature-board, current code?
 sudo systemctl restart departures.service depature-webui.service
 journalctl -u departures.service --no-pager -n 15
-# expect: board 192x32 layout=... control=... pages=[1, 2, 3]
+# expect: board 240x40 layout=... control=... pages=[1, 2, 3]
 ```
 
 Then: hold page 2 in the web UI → panel must freeze within ~1s and

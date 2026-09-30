@@ -26,8 +26,8 @@ Based on the example code in:
   RGB-Matrix-Px-xx/example/Raspberry-Pi/examples-api-use/clock.cc
   RGB-Matrix-Px-xx/example/Raspberry-Pi/bindings/python/samples/runtext.py
 
-Usage on Pi (3 panels chained):
-  sudo python3 departures.py --led-rows 32 --led-cols 64 --led-chain 3
+Usage on Pi (3 panels chained, 240x40 total):
+  sudo python3 departures.py --led-rows 40 --led-cols 80 --led-chain 3
 
 Test on Mac / without hardware:
   python3 departures.py --mock --once
@@ -758,17 +758,18 @@ def run_matrix(args, L, get_board_data, layout_dir):
         pitch = P1["rows"]["pitch"]
         clock_drawn = False
         rest = rows[1:]
-        for n, dep in enumerate(rest):
-            yy = y + n * pitch
-            if yy >= height:
-                dropped = len(rest) - n
-                if time.time() - getattr(draw_static, "_warned", 0) > 60:
-                    print(f"warning: {dropped} service row(s) off-screen "
-                          f"- check layout/page1.json rows/pitch?",
-                          file=sys.stderr)
-                    draw_static._warned = time.time()
-                break
-            last = (n == len(rest) - 1)
+        # reservations (clock/page caps) belong to the last DRAWN row,
+        # not the last listed one -- rows past the screen edge are cut
+        drawn = [(dep, y + n * pitch) for n, dep in enumerate(rest)
+                 if y + n * pitch < height]
+        if len(drawn) < len(rest):
+            if time.time() - getattr(draw_static, "_warned", 0) > 60:
+                print(f"warning: {len(rest) - len(drawn)} service row(s) "
+                      f"off-screen - check layout/page1.json rows/pitch?",
+                      file=sys.stderr)
+                draw_static._warned = time.time()
+        for k, (dep, yy) in enumerate(drawn):
+            last = (k == len(drawn) - 1)
             share = last and yy >= height - rfont.height
             draw_row(dep, rfont, seg, yy,
                      clock_x=clock_x if share else None,
@@ -885,8 +886,8 @@ def main():
     p.add_argument("--preview", action="store_true",
                    help="ASCII preview of every page (no hardware needed)")
     # Matrix flags (mirrors SampleBase from the examples)
-    p.add_argument("--led-rows", type=int, default=32)
-    p.add_argument("--led-cols", type=int, default=64)
+    p.add_argument("--led-rows", type=int, default=40)
+    p.add_argument("--led-cols", type=int, default=80)
     p.add_argument("--led-chain", type=int, default=3,
                    help="You have 3 panels chained, so default is 3")
     p.add_argument("--led-parallel", type=int, default=1)

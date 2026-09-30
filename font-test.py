@@ -89,8 +89,8 @@ def load_layout(path):
 
 
 def add_matrix_args(p):
-    p.add_argument("--led-rows", type=int, default=32)
-    p.add_argument("--led-cols", type=int, default=64)
+    p.add_argument("--led-rows", type=int, default=40)
+    p.add_argument("--led-cols", type=int, default=80)
     p.add_argument("--led-chain", type=int, default=3)
     p.add_argument("--led-parallel", type=int, default=1)
     p.add_argument("--led-gpio-mapping", default="regular")

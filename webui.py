@@ -198,11 +198,11 @@ def field_html(fname, sec, key, val, fonts):
     elif isinstance(val, int) and not isinstance(val, bool):
         kl = key.lower()
         if "width" in kl:
-            lo, hi = 0, 192
+            lo, hi = 0, 240
         elif "height" in kl:
-            lo, hi = 0, 32
+            lo, hi = 0, 40
         else:
-            lo, hi = -32, 64
+            lo, hi = -40, 80
         ctl = (f'<input type="range" min="{lo}" max="{hi}" step="1" '
                f'name="{esc(name)}" value="{val}" data-out="o-{esc(name)}">'
                f' <output id="o-{esc(name)}">{val}</output>')
@@ -594,8 +594,8 @@ def main():
     ap.add_argument("--limit", type=int, default=3)
     ap.add_argument("--date", default="2026-10-04")
     ap.add_argument("--layout", default="static", choices=["rotate", "static"])
-    ap.add_argument("--led-rows", type=int, default=32)
-    ap.add_argument("--led-cols", type=int, default=64)
+    ap.add_argument("--led-rows", type=int, default=40)
+    ap.add_argument("--led-cols", type=int, default=80)
     ap.add_argument("--led-chain", type=int, default=3)
     ap.add_argument("--led-parallel", type=int, default=1)
     ap.add_argument("--led-gpio-mapping", default="regular")
