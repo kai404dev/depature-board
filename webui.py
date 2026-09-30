@@ -61,6 +61,7 @@ def render_page(L, board, page, args):
         a2 = copy.copy(args)
         a2.pages = [page]
         a2.once = True
+        a2.ignore_control = True
         a2.layout_dir = _layout_dir
         buf = io.StringIO()
         old = sys.stdout

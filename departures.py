@@ -745,7 +745,8 @@ def run_matrix(args, L, get_board_data, layout_dir):
                 board = []
             last_fetch = now
 
-        if paused in (1, 2, 3):
+        if paused in (1, 2, 3) and not getattr(args, "ignore_control",
+                                                       False):
             # held from the web UI (control.json): stay put, and restart
             # the dwell so unpausing begins a full page cycle
             cur_page = paused
@@ -881,6 +882,7 @@ def main():
             a2 = copy.copy(args)
             a2.pages = [pg]
             a2.once = True
+            a2.ignore_control = True
             run_matrix(a2, L, lambda: board, args.layout_dir)
             print(f"--- page {pg} preview ({W}x{H}) ---")
             rec.report()
