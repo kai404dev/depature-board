@@ -464,7 +464,10 @@ def run_matrix(args, get_board_data):
                      f"{raw.get('service_type_name', '')}".strip()]
         y3 = y2 + sfont.height - 2
         if notes and y3 < height + 1:
-            cap = min(width - 2, clock_x - 3, width - page_w - 4)
+            share3 = y3 >= height - sfont.height
+            cap = min(width - 2, width - page_w - 4)
+            if share3:
+                cap = min(cap, clock_x - 3)
             graphics.DrawText(offscreen, sfont, 1, y3, amber,
                               fit_text(graphics, offscreen, sfont, amber,
                                        notes[0], max(0, cap)))
@@ -562,6 +565,7 @@ def run_matrix(args, get_board_data):
         y += tight + 2  # clear the main line's descenders
         draw_calling(rows[0], y)
         rest = rows[1:]
+        clock_drawn = False
         for n, dep in enumerate(rest):
             y += tight_mid + gap
             if y >= height:
@@ -582,6 +586,11 @@ def run_matrix(args, get_board_data):
                 graphics.DrawText(offscreen, sfont, clock_x,
                                   y if share else height - 1,
                                   amber, clock_s)
+                clock_drawn = True
+        if not clock_drawn:
+            # rows ran off-screen (fonts too big?) - clock still shows
+            graphics.DrawText(offscreen, sfont, clock_x, height - 1,
+                              amber, clock_s)
 
     while True:
         now = time.time()
