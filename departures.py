@@ -351,6 +351,7 @@ def run_matrix(args, get_board_data):
     yellow = graphics.Color(255, 255, 0)
     red = graphics.Color(255, 30, 30)
     green = graphics.Color(60, 255, 60)
+    black = graphics.Color(0, 0, 0)
 
     offscreen = matrix.CreateFrameCanvas()
     width = offscreen.width
@@ -475,9 +476,9 @@ def run_matrix(args, get_board_data):
                           amber, clock_s)
 
     def draw_page3(dep, page):
-        """Train formation diagram: coach cards with capacity fill,
-        first class at the pointy front (yellow), accessible car last
-        (green). Live clock bottom-middle, page number bottom-right."""
+        """Train formation diagram: fixed-width coach cards, pointy front
+        car, 1ST/wheelchair markers inside, letters underneath.
+        Live clock bottom-middle, page number bottom-right."""
         t, dest, _, raw = format_departure(dep)
         cars, label = formation_of(dep, default_cars=args.coaches)
         n = len(cars)
@@ -491,21 +492,36 @@ def run_matrix(args, get_board_data):
                         width - lab_w - 4)
         graphics.DrawText(offscreen, sfont, 1, y_head, yellow, head)
 
-        # coach cards row; first car gets a pointy (slanted) front
-        margin, gap_b, bh, slant = 2, 3, 12, 6
-        bw = max(8, (width - 2 * margin - (n - 1) * gap_b) // max(1, n))
-        total = n * bw + (n - 1) * gap_b
-        x0 = max(0, (width - total) // 2)
+        # coach cards row: fixed width, left-aligned so the centered
+        # clock and page number never collide with them. First car gets
+        # a pointy (slanted) front. All outlines amber, all fills yellow
+        # at capacity height; class markers inside auto-contrast.
+        margin, gap_b, bh, slant = 2, 3, 12, 5
+        bw = args.coach_width
+        x0 = margin
         y_top = y_head + 3
         yb = y_top + bh - 1
+
+        def draw_wheelchair(cx, it, col):
+            """~7x9 side-view wheelchair pictogram, top row it."""
+            ln = lambda x0, y0, x1, y1: graphics.DrawLine(
+                offscreen, x0, y0, x1, y1, col)
+            px = lambda x, y: offscreen.SetPixel(
+                x, y, col.red, col.green, col.blue)
+            px(cx - 2, it)                    # head
+            ln(cx - 2, it + 1, cx - 2, it + 4)  # backrest
+            ln(cx - 2, it + 4, cx + 2, it + 4)  # seat
+            ln(cx + 2, it + 4, cx + 2, it + 6)  # footrest
+            graphics.DrawCircle(offscreen, cx - 1, it + 6, 2, col)  # wheel
+            px(cx + 3, it + 7)                 # caster
+
         for i, car in enumerate(cars):
             x = x0 + i * (bw + gap_b)
             x1 = x + bw - 1
-            outline = green if car["accessible"] else amber
-            # capacity fill from the bottom (yellow 1st, amber standard)
+            cx = x + bw // 2 + (slant // 2 if i == 0 else 0)
+            # capacity fill from the bottom
             fill_h = int((bh - 2) * car["capacity"])
             if fill_h > 0:
-                fcol = yellow if car["first"] else amber
                 for yy in range(max(y_top + 1, yb - fill_h), yb):
                     if i == 0:
                         frac = (yy - y_top) / max(1, bh - 1)
@@ -513,36 +529,42 @@ def run_matrix(args, get_board_data):
                     else:
                         xs = x + 1
                     for xx in range(xs, x1):
-                        offscreen.SetPixel(xx, yy, fcol.red,
-                                           fcol.green, fcol.blue)
+                        offscreen.SetPixel(xx, yy, yellow.red,
+                                           yellow.green, yellow.blue)
             if i == 0:
-                graphics.DrawLine(offscreen, x, yb, x1, yb, outline)
-                graphics.DrawLine(offscreen, x1, y_top, x1, yb, outline)
+                graphics.DrawLine(offscreen, x, yb, x1, yb, amber)
+                graphics.DrawLine(offscreen, x1, y_top, x1, yb, amber)
                 graphics.DrawLine(offscreen, x + slant, y_top, x1, y_top,
-                                  outline)
-                graphics.DrawLine(offscreen, x, yb, x + slant, y_top, outline)
+                                  amber)
+                graphics.DrawLine(offscreen, x, yb, x + slant, y_top, amber)
             else:
-                graphics.DrawLine(offscreen, x, y_top, x1, y_top, outline)
-                graphics.DrawLine(offscreen, x, yb, x1, yb, outline)
-                graphics.DrawLine(offscreen, x, y_top, x, yb, outline)
-                graphics.DrawLine(offscreen, x1, y_top, x1, yb, outline)
+                graphics.DrawLine(offscreen, x, y_top, x1, y_top, amber)
+                graphics.DrawLine(offscreen, x, yb, x1, yb, amber)
+                graphics.DrawLine(offscreen, x, y_top, x, yb, amber)
+                graphics.DrawLine(offscreen, x1, y_top, x1, yb, amber)
+            # class marker inside (black on fill, amber off fill)
+            mcol = black if fill_h >= bh // 2 else amber
+            if car["first"]:
+                mark, mfnt = "1ST", tfont
+                tw = text_width(graphics, offscreen, mfnt, mcol, mark)
+                graphics.DrawText(offscreen, mfnt, cx - tw // 2,
+                                  y_top + bh // 2 + 2, mcol, mark)
+            elif car["accessible"]:
+                draw_wheelchair(cx, y_top + 1, mcol)
 
         clock_s, clock_x, clock_w = clock_geom()
         page_w = draw_page_num(page)
 
-        # labels under the special cars (skip ACC if it hits the clock)
+        # carriage letter under each car, centered
         y_lab = y_top + bh + sfont.height - 1
         if y_lab < height:
-            if cars[0]["first"]:
-                graphics.DrawText(offscreen, sfont, x0 + 1, y_lab,
-                                  amber, "1ST")
-            if cars[-1]["accessible"]:
-                acc = "ACC"
-                aw = text_width(graphics, offscreen, sfont, green, acc)
-                ax = x0 + (n - 1) * (bw + gap_b) + bw // 2 - aw // 2
-                if ax + aw < clock_x - 2 or ax > clock_x + clock_w + 2:
-                    graphics.DrawText(offscreen, sfont, ax, y_lab,
-                                      green, acc)
+            for i, car in enumerate(cars):
+                x = x0 + i * (bw + gap_b)
+                letter = "ABCDEFGH"[i] if i < 8 else str(i + 1)
+                lw = text_width(graphics, offscreen, sfont, amber, letter)
+                graphics.DrawText(offscreen, sfont,
+                                  x + bw // 2 - lw // 2, y_lab,
+                                  amber, letter)
 
         graphics.DrawText(offscreen, sfont, clock_x, height - 1,
                           amber, clock_s)
@@ -683,6 +705,8 @@ def main():
     p.add_argument("--coaches", type=int, default=4,
                    help="Default coach count for the page-3 diagram "
                         "(API formation/coaches overrides it)")
+    p.add_argument("--coach-width", type=int, default=16,
+                   help="Coach card width in LEDs on page 3 (default 16)")
     p.add_argument("--page-seconds", type=float, default=10,
                    help="Seconds per page when cycling")
     p.add_argument("--mock", action="store_true",
@@ -765,10 +789,11 @@ def main():
             print("--- page 3 ---")
             print(f"{t} {dest} ({label})")
             cells = []
-            for c in cars:
+            for i, c in enumerate(cars):
+                letter = "ABCDEFGH"[i] if i < 8 else str(i + 1)
                 tag = ("1ST " if c["first"] else "") + \
-                      ("ACC " if c["accessible"] else "")
-                cells.append(f"[{tag}{c['capacity']:.0%}]")
+                      ("WCHR " if c["accessible"] else "")
+                cells.append(f"{letter}[{tag}{c['capacity']:.0%}]")
             print("FRONT>" + "".join(cells))
         if not args.once:
             # keep polling in mock mode so you can watch it update
