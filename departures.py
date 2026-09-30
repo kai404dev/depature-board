@@ -116,6 +116,17 @@ def run_matrix(args, get_departures):
     options.led_rgb_sequence = args.led_rgb_sequence
     options.pixel_mapper_config = args.led_pixel_mapper
     options.show_refresh_rate = 1 if args.led_show_refresh else 0
+    options.pwm_lsb_nanoseconds = args.led_pwm_lsb_nanoseconds
+    options.pwm_dither_bits = args.led_pwm_dither_bits
+    options.row_address_type = args.led_row_addr_type
+    options.multiplexing = args.led_multiplexing
+    options.panel_type = args.led_panel_type
+    if args.led_inverse:
+        options.inverse_colors = True
+    if args.led_no_hardware_pulse:
+        options.disable_hardware_pulsing = True
+    if args.led_rp1_rio:
+        options.rp1_rio = args.led_rp1_rio
     if args.led_no_drop_privs:
         options.drop_privileges = False
 
@@ -236,6 +247,19 @@ def main():
     p.add_argument("--led-pixel-mapper", default="")
     p.add_argument("--led-show-refresh", action="store_true")
     p.add_argument("--led-no-drop-privs", action="store_true")
+    p.add_argument("--led-no-hardware-pulse", action="store_true",
+                   help="Don't use hardware pin-pulse generation. "
+                        "Avoids the snd_bcm2835 sound-module conflict, "
+                        "but with more flicker.")
+    p.add_argument("--led-rp1-rio", type=int, default=0, choices=[0, 1],
+                   help="On Pi 5, use experimental RP1 RIO backend instead of PIO. 0=PIO, 1=RIO.")
+    p.add_argument("--led-pwm-lsb-nanoseconds", type=int, default=130)
+    p.add_argument("--led-pwm-dither-bits", type=int, default=0)
+    p.add_argument("--led-row-addr-type", type=int, default=0)
+    p.add_argument("--led-multiplexing", type=int, default=0)
+    p.add_argument("--led-panel-type", default="")
+    p.add_argument("--led-inverse", action="store_true",
+                   help="Switch if your matrix has inverse colors on.")
     args = p.parse_args()
 
     if args.date == "":
