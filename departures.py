@@ -176,22 +176,6 @@ def fit_text(graphics, canvas, font, color, text, max_w):
     return text
 
 
-def draw_scrolled(graphics, canvas, font, text, y, color, width, scroll_x):
-    """Draw text; scroll it horizontally if wider than the display.
-
-    Returns the scroll_x to use on the next frame.
-    """
-    w = text_width(graphics, canvas, font, color, text)
-    if w <= width - 2:
-        graphics.DrawText(canvas, font, 1, y, color, text)
-        return width  # reset so a later long text starts offscreen-right
-    graphics.DrawText(canvas, font, scroll_x, y, color, text)
-    scroll_x -= 1
-    if scroll_x + w < 0:
-        scroll_x = width
-    return scroll_x
-
-
 def draw_main_line(graphics, canvas, font, t, dest, y, width,
                    time_color, dest_color):
     """Two-tone '10:00 Matlock Town' line, destination truncated to fit."""
@@ -248,11 +232,8 @@ def run_matrix(args, get_board_data):
 
     matrix = RGBMatrix(options=options)
 
-    # Classic departure-board palette
-    white = graphics.Color(255, 255, 255)
-    yellow = graphics.Color(255, 200, 0)
+    # Classic departure-board palette: everything orange bar the status
     amber = graphics.Color(255, 140, 0)
-    dim = graphics.Color(255, 140, 0)
     red = graphics.Color(255, 30, 30)
     green = graphics.Color(60, 255, 60)
 
@@ -264,76 +245,68 @@ def run_matrix(args, get_board_data):
     last_fetch = 0
     idx = 0
     idx_since = time.time()
-    scroll_x = width
-    scroll_xs = [width] * max(1, args.limit)
 
     def status_colors(raw):
         if raw.get("is_cancelled"):
-            return dim, red
+            return amber, red
         if raw.get("is_delayed"):
-            return white, red
-        return yellow, green
+            return amber, red
+        return amber, green
 
-    def draw_full(dep, y0, scroll_x):
+    def draw_full(dep, y0):
         """One departure in full detail, starting at vertical offset y0."""
         t, dest, status, raw = format_departure(dep)
         main_c, sub_c = status_colors(raw)
-        time_c = red if raw.get("is_cancelled") else main_c
 
         y_main = y0 + 1 + font.baseline
         draw_main_line(graphics, offscreen, font, t, dest, y_main,
-                       width, time_c, main_c if not raw.get("is_cancelled") else dim)
+                       width, main_c, main_c)
 
         y_call = y_main + sfont.height + 1
         if dep.get("calling_at"):
-            scroll_x = draw_scrolled(graphics, offscreen, sfont,
-                                     dep["calling_at"], y_call,
-                                     amber, width, scroll_x)
+            graphics.DrawText(offscreen, sfont, 1, y_call, amber,
+                              fit_text(graphics, offscreen, sfont, amber,
+                                       dep["calling_at"], width - 2))
         y_status = y_call + sfont.height + 1
         if y_status < height:
             graphics.DrawText(offscreen, sfont, 1, y_status, sub_c, status)
-        return scroll_x
 
-    def draw_static(scroll_xs):
+    def draw_static():
         # 6-line look: per departure, main line (time + destination +
         # platform + status) with a smaller calling-at line beneath.
         row_h = height // max(1, args.limit)
         for i, dep in enumerate(board[:args.limit]):
             y_top = i * row_h
             t, dest, status, raw = format_departure(dep)
-            cancelled = raw.get("is_cancelled")
-            delayed = raw.get("is_delayed")
-            status_c = red if (cancelled or delayed) else green
-            time_c = dim if cancelled else yellow
-            dest_c = dim if cancelled else white
+            _, sub_c = status_colors(raw)
 
             y_main = y_top + font.baseline
             # right part: "1 On time" (platform amber, status green/red)
             plat = (raw.get("platform") or "").strip()
             plat_part = (plat + " ") if plat else ""
             right_w = text_width(graphics, offscreen, font, amber, plat_part)
-            right_w += text_width(graphics, offscreen, font, status_c, status)
+            right_w += text_width(graphics, offscreen, font, sub_c, status)
             sub_x = max(1, width - right_w - 1)
             if plat:
                 graphics.DrawText(offscreen, font, sub_x, y_main,
                                   amber, plat_part)
             graphics.DrawText(offscreen, font, sub_x + text_width(
                 graphics, offscreen, font, amber, plat_part),
-                y_main, status_c, status)
+                y_main, sub_c, status)
             # left part: "10:00 Matlock Town", fitted around the right part
             t_part = t + " "
             w_time = graphics.DrawText(offscreen, font, 1, y_main,
-                                       time_c, t_part)
-            dest = fit_text(graphics, offscreen, font, dest_c, dest,
+                                       amber, t_part)
+            dest = fit_text(graphics, offscreen, font, amber, dest,
                             sub_x - w_time - 2)
             graphics.DrawText(offscreen, font, 1 + w_time, y_main,
-                              dest_c, dest)
-            # calling-at line beneath, scrolling if too wide
+                              amber, dest)
+            # calling-at line beneath, static (truncated to fit)
             y_call = y_main + sfont.height
             if dep.get("calling_at"):
-                scroll_xs[i] = draw_scrolled(graphics, offscreen, sfont,
-                                             dep["calling_at"], y_call,
-                                             amber, width, scroll_xs[i])
+                graphics.DrawText(offscreen, sfont, 1, y_call, amber,
+                                  fit_text(graphics, offscreen, sfont, amber,
+                                           dep["calling_at"], width - 2))
 
     while True:
         now = time.time()
@@ -347,8 +320,6 @@ def run_matrix(args, get_board_data):
             last_fetch = now
             idx = 0
             idx_since = now
-            scroll_x = width
-            scroll_xs = [width] * max(1, args.limit)
 
         offscreen.Fill(0, 0, 0)
 
@@ -356,13 +327,12 @@ def run_matrix(args, get_board_data):
             graphics.DrawText(offscreen, font, 2, 1 + font.baseline,
                               red, "No departures")
         elif args.layout == "static":
-            draw_static(scroll_xs)
+            draw_static()
         else:
             if len(board) > 1 and now - idx_since >= args.rotate_seconds:
                 idx = (idx + 1) % len(board)
                 idx_since = now
-                scroll_x = width
-            scroll_x = draw_full(board[idx % len(board)], 0, scroll_x)
+            draw_full(board[idx % len(board)], 0)
 
         offscreen = matrix.SwapOnVSync(offscreen)
 
