@@ -325,8 +325,13 @@ def run_matrix(args, get_board_data):
     sfont = graphics.Font()
     if not os.path.exists(args.font_small):
         sys.exit(f"Small font not found: {args.font_small}\n"
-                 f"Try e.g. --font-small ./fonts/4x6.bdf")
+                 f"Try e.g. --font-small ./fonts/5x7.bdf")
     sfont.LoadFont(args.font_small)
+    mfont = graphics.Font()
+    if not os.path.exists(args.font_mid):
+        sys.exit(f"Mid font not found: {args.font_mid}\n"
+                 f"Try e.g. --font-mid ./fonts/6x12.bdf")
+    mfont.LoadFont(args.font_mid)
     bfont = graphics.Font()
     if not os.path.exists(args.font_big):
         sys.exit(f"Big font not found: {args.font_big}\n"
@@ -442,7 +447,9 @@ def run_matrix(args, get_board_data):
         status = live_status(raw, args.flip_seconds)
         plat_part = (f"Plat {plat} " if plat else "")
         line2 = plat_part + status
-        y2 = y_big + sfont.height
+        # tight pitches tuned for 10x20 + 5x7 on a 32px panel:
+        # big(18) / status(24) / note(31, shares line with clock)
+        y2 = y_big + sfont.height - 3
         graphics.DrawText(offscreen, sfont, 1, y2, sub_c,
                           fit_text(graphics, offscreen, sfont, sub_c,
                                    line2, width - 2))
@@ -455,8 +462,8 @@ def run_matrix(args, get_board_data):
         if not notes:
             notes = [f"{raw.get('headcode', '')} "
                      f"{raw.get('service_type_name', '')}".strip()]
-        y3 = y2 + sfont.height
-        if notes and y3 < height:
+        y3 = y2 + sfont.height - 2
+        if notes and y3 < height + 1:
             cap = min(width - 2, clock_x - 3, width - page_w - 4)
             graphics.DrawText(offscreen, sfont, 1, y3, amber,
                               fit_text(graphics, offscreen, sfont, amber,
@@ -545,7 +552,8 @@ def run_matrix(args, get_board_data):
         if not rows:
             return
         gap = args.row_gap
-        tight = max(4, sfont.height - 2)  # snug pitch; glyph boxes overlap
+        tight = max(4, sfont.height - 2)  # calling-at pitch base
+        tight_mid = max(4, mfont.height - 2)  # compact row pitch base
         clock_s, clock_x, clock_w = clock_geom()
         page_w = draw_page_num(page)
 
@@ -555,12 +563,18 @@ def run_matrix(args, get_board_data):
         draw_calling(rows[0], y)
         rest = rows[1:]
         for n, dep in enumerate(rest):
-            y += tight + gap
+            y += tight_mid + gap
             if y >= height:
+                dropped = len(rest) - n
+                if time.time() - getattr(draw_static, "_warned", 0) > 60:
+                    print(f"warning: {dropped} service row(s) off-screen "
+                          f"- fonts too big for {height}px height?",
+                          file=sys.stderr)
+                    draw_static._warned = time.time()
                 break
             last = (n == len(rest) - 1)
             share = last and y >= height - sfont.height
-            draw_row(dep, sfont, y,
+            draw_row(dep, mfont, y,
                      clock_x=clock_x if share else None,
                      right_extra=(page_w + 2) if last else 0)
             if last:
@@ -630,13 +644,16 @@ def main():
     p.add_argument("--refresh", type=int, default=20,
                    help="Seconds between API pulls (default 20). The display "
                         "only updates when the data actually changes.")
-    p.add_argument("--font", default=find_font("5x7.bdf"),
+    p.add_argument("--font", default=find_font("7x14B.bdf"),
                    help="Path to *.bdf font for the top service line "
-                        "(default 5x7)")
-    p.add_argument("--font-small", default=find_font("4x6.bdf"),
-                   help="Path to *.bdf font for other services, "
-                        "calling-at and clock lines")
-    p.add_argument("--font-big", default=find_font("7x13.bdf"),
+                        "(default 7x14B)")
+    p.add_argument("--font-mid", default=find_font("6x12.bdf"),
+                   help="Path to *.bdf font for the other service lines "
+                        "(default 6x12)")
+    p.add_argument("--font-small", default=find_font("5x7.bdf"),
+                   help="Path to *.bdf font for calling-at, notes "
+                        "and clock lines (default 5x7)")
+    p.add_argument("--font-big", default=find_font("10x20.bdf"),
                    help="Path to *.bdf font for the page-2 headline")
     p.add_argument("--font-tiny", default=find_font("tom-thumb.bdf"),
                    help="Path to *.bdf font for the page numbers")
