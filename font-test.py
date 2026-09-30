@@ -144,14 +144,25 @@ def make_matrix(args):
     return RGBMatrix(options=options)
 
 
-def load_fonts(graphics, items):
-    """Load each distinct font once, keyed by path."""
+def load_fonts(graphics, items, extra=()):
+    """Load each distinct font once, keyed by path.
+
+    Must run BEFORE make_matrix(): matrix init drops root privileges
+    to 'daemon', which may not be able to read files under /home.
+    Fonts that fail to load are skipped with a warning (gallery mode
+    must not die on one bad file).
+    """
     fonts = {}
-    for it in items:
-        if it["font"] not in fonts:
+    for path in list({it["font"] for it in items}) + list(extra):
+        if path in fonts or not path or not os.path.exists(path):
+            continue
+        try:
             f = graphics.Font()
-            f.LoadFont(it["font"])
-            fonts[it["font"]] = f
+            f.LoadFont(path)
+            fonts[path] = f
+        except Exception as e:
+            print(f"warning: skipping {os.path.basename(path)}: {e}",
+                  file=sys.stderr)
     return fonts
 
 
@@ -200,11 +211,19 @@ def main():
         return
 
     from rgbmatrix import graphics
+    gallery = not args.json
+    # fonts BEFORE matrix: init drops privileges, hiding /home files
+    tiny_path = find_font("tom-thumb.bdf") if gallery else None
+    fonts = load_fonts(graphics, items,
+                       extra=[tiny_path] if tiny_path else [])
+    # drop items whose font failed to load
+    items = [it for it in items if it["font"] in fonts]
+    if not items:
+        sys.exit("no fonts could be loaded")
+    tiny = fonts.get(tiny_path, fonts[items[0]["font"]])
     matrix = make_matrix(args)
-    fonts = load_fonts(graphics, items)
     offscreen = matrix.CreateFrameCanvas()
 
-    gallery = not args.json
     i = 0
     try:
         while True:
@@ -218,9 +237,6 @@ def main():
                                   graphics.Color(r, g, b), it["text"])
                 # label the font name underneath in a tiny font if it fits
                 if it["y"] + 8 < offscreen.height:
-                    tiny = fonts.get(find_font("tom-thumb.bdf"))
-                    if tiny is None:
-                        tiny = f
                     graphics.DrawText(offscreen, tiny, 1, offscreen.height - 1,
                                       graphics.Color(255, 255, 0), it["name"])
                 offscreen = matrix.SwapOnVSync(offscreen)
