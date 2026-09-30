@@ -442,7 +442,7 @@ def run_matrix(args, get_board_data):
                                    yellow, t_part)
         dest = fit_text(graphics, offscreen, bfont, amber, dest,
                         width - w_time - 1)
-        graphics.DrawText(offscreen, bfont, 1 + w_time, y_big,
+        graphics.DrawText(offscreen, bfont, 1 + w_time, y_big - 3,
                           amber, dest)
 
         status = live_status(raw, args.flip_seconds)
