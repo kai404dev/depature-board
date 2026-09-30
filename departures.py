@@ -223,9 +223,8 @@ def run_matrix(args, get_board_data):
     matrix = RGBMatrix(options=options)
 
     # Classic departure-board palette: everything orange bar the status;
-    # time white, platform yellow.
+    # time and platform yellow.
     amber = graphics.Color(255, 140, 0)
-    white = graphics.Color(255, 255, 255)
     yellow = graphics.Color(255, 255, 0)
     red = graphics.Color(255, 30, 30)
     green = graphics.Color(60, 255, 60)
@@ -246,15 +245,17 @@ def run_matrix(args, get_board_data):
             return amber, red
         return amber, green
 
-    def draw_row(dep, fnt, y_base):
-        """Service main line: time white, destination orange,
-        platform yellow, status green/red."""
+    def draw_row(dep, fnt, y_base, right_pad=0):
+        """Service main line: time + platform yellow, destination orange,
+        status green/red. right_pad reserves pixels on the right
+        (used for the clock on the last row)."""
         t, dest, status, raw = format_departure(dep)
         _, sub_c = status_colors(raw)
         plat = (raw.get("platform") or "").strip()
         plat_part = (plat + " ") if plat else ""
         right_w = text_width(graphics, offscreen, fnt, amber, plat_part)
         right_w += text_width(graphics, offscreen, fnt, sub_c, status)
+        right_w += right_pad
         sub_x = max(1, width - right_w - 1)
         if plat:
             graphics.DrawText(offscreen, fnt, sub_x, y_base,
@@ -264,7 +265,7 @@ def run_matrix(args, get_board_data):
             y_base, sub_c, status)
         t_part = t + " "
         w_time = graphics.DrawText(offscreen, fnt, 1, y_base,
-                                   white, t_part)
+                                   yellow, t_part)
         dest = fit_text(graphics, offscreen, fnt, amber, dest,
                         sub_x - w_time - 2)
         graphics.DrawText(offscreen, fnt, 1 + w_time, y_base,
@@ -277,13 +278,6 @@ def run_matrix(args, get_board_data):
                               fit_text(graphics, offscreen, sfont, amber,
                                        dep["calling_at"], width - 2))
 
-    def draw_clock():
-        """Live clock centered at the bottom of the screen."""
-        now_s = time.strftime("%H:%M:%S")
-        w = text_width(graphics, offscreen, sfont, amber, now_s)
-        graphics.DrawText(offscreen, sfont, max(1, (width - w) // 2),
-                          height - 1, amber, now_s)
-
     def draw_full(dep, y0):
         """One departure in full detail, starting at vertical offset y0."""
         draw_row(dep, font, y0 + 1 + font.baseline)
@@ -291,20 +285,33 @@ def run_matrix(args, get_board_data):
 
     def draw_static():
         # Top service bigger with its calling-at line; the rest compact.
-        # Live clock centered at the bottom.
+        # 2px (--row-gap) between departures. The live clock shares the
+        # last row, centered (a dedicated clock line does not fit in 32px
+        # alongside 3 services + calling-at).
         rows = board[:args.limit]
         if not rows:
             return
+        gap = args.row_gap
+        tight = max(4, sfont.height - 2)  # snug pitch; glyph boxes overlap
+        clock_s = time.strftime("%H:%M:%S")
+        clock_w = text_width(graphics, offscreen, sfont, amber, clock_s)
+        clock_x = max(1, (width - clock_w) // 2)
+
         y = font.baseline
         draw_row(rows[0], font, y)
-        y += sfont.height
+        y += tight
         draw_calling(rows[0], y)
-        for dep in rows[1:]:
-            y += sfont.height
-            if y >= height - sfont.height:
+        rest = rows[1:]
+        for n, dep in enumerate(rest):
+            y += tight + gap
+            if y >= height:
                 break
-            draw_row(dep, sfont, y)
-        draw_clock()
+            last = (n == len(rest) - 1)
+            draw_row(dep, sfont, y,
+                     right_pad=(width - clock_x) if last else 0)
+            if last:
+                graphics.DrawText(offscreen, sfont, clock_x, y,
+                                  amber, clock_s)
 
     while True:
         now = time.time()
@@ -360,6 +367,8 @@ def main():
                         "departure at a time.")
     p.add_argument("--rotate-seconds", type=float, default=5,
                    help="Seconds per departure in rotate layout (default 5)")
+    p.add_argument("--row-gap", type=int, default=2,
+                   help="Blank pixels between departures in static layout")
     p.add_argument("--mock", action="store_true",
                    help="Print to console instead of driving the LED matrix")
     p.add_argument("--once", action="store_true",
