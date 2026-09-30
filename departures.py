@@ -214,8 +214,38 @@ def board_signature(departures):
         t, dest, status, raw = format_departure(d)
         rows.append((t, dest, status, raw.get("platform"),
                      d.get("calling_at", ""),
-                     tuple(d.get("note_lines") or [])))
+                     tuple(d.get("note_lines") or []),
+                     json.dumps(d.get("formation", {}), sort_keys=True),
+                     d.get("coaches"), json.dumps(d.get("units", []))))
     return json.dumps(rows, sort_keys=True)
+
+
+def formation_of(dep, default_cars=4):
+    """Coach formation for the diagram page.
+
+    Custom API bits (optional) per departure:
+      "formation": {"cars": [{"first": true, "accessible": false}, ...],
+                    "label": "4 coaches"}   # label optional
+    or simply:
+      "coaches": 4
+
+    Default: 4 cards, first class at the front (first card),
+    accessible at the last car. Returns (cars, label).
+    """
+    f = dep.get("formation") or {}
+    if isinstance(f, dict) and isinstance(f.get("cars"), list) and f["cars"]:
+        cars = [{"first": bool(c.get("first") or c.get("first_class")),
+                 "accessible": bool(c.get("accessible"))}
+                for c in f["cars"] if isinstance(c, dict)]
+        if cars:
+            n = len(cars)
+            label = f.get("label") or f"{n} coach" + ("" if n == 1 else "es")
+            return cars, label
+    n = dep.get("coaches") if isinstance(dep.get("coaches"), int) else 0
+    if not n or n < 1:
+        n = default_cars
+    cars = [{"first": i == 0, "accessible": i == n - 1} for i in range(n)]
+    return cars, f"{n} coach" + ("" if n == 1 else "es")
 
 
 # ---------------------------------------------------------------------------
@@ -387,6 +417,56 @@ def run_matrix(args, get_board_data):
                               fit_text(graphics, offscreen, sfont, amber,
                                        notes[0], width - 2))
 
+    def draw_page3(dep):
+        """Train formation diagram: coach cards, first class at the front
+        (filled), accessible car last (green)."""
+        t, dest, _, raw = format_departure(dep)
+        cars, label = formation_of(dep, default_cars=args.coaches)
+        n = len(cars)
+
+        # header: "10:00 Matlock Town" left, "4 coaches" right
+        y_head = sfont.baseline
+        lab_w = text_width(graphics, offscreen, sfont, amber, label)
+        graphics.DrawText(offscreen, sfont, max(1, width - lab_w - 1),
+                          y_head, amber, label)
+        head = fit_text(graphics, offscreen, sfont, amber, f"{t} {dest}",
+                        width - lab_w - 4)
+        graphics.DrawText(offscreen, sfont, 1, y_head, yellow, head)
+
+        # coach cards row
+        margin, gap_b, bh = 2, 3, 12
+        bw = max(8, (width - 2 * margin - (n - 1) * gap_b) // max(1, n))
+        total = n * bw + (n - 1) * gap_b
+        x0 = max(0, (width - total) // 2)
+        y_top = y_head + 3
+        for i, car in enumerate(cars):
+            x = x0 + i * (bw + gap_b)
+            outline = green if car["accessible"] else amber
+            if car["first"]:
+                for yy in range(y_top + 1, y_top + bh - 1):
+                    for xx in range(x + 1, x + bw - 1):
+                        offscreen.SetPixel(xx, yy, amber.red,
+                                           amber.green, amber.blue)
+            graphics.DrawLine(offscreen, x, y_top, x + bw - 1, y_top, outline)
+            graphics.DrawLine(offscreen, x, y_top + bh - 1, x + bw - 1,
+                              y_top + bh - 1, outline)
+            graphics.DrawLine(offscreen, x, y_top, x, y_top + bh - 1, outline)
+            graphics.DrawLine(offscreen, x + bw - 1, y_top, x + bw - 1,
+                              y_top + bh - 1, outline)
+
+        # labels under the special cars
+        y_lab = y_top + bh + sfont.height - 1
+        if y_lab < height:
+            if cars[0]["first"]:
+                graphics.DrawText(offscreen, sfont, x0 + 1, y_lab,
+                                  amber, "1ST")
+            if cars[-1]["accessible"]:
+                acc = "ACC"
+                aw = text_width(graphics, offscreen, sfont, green, acc)
+                graphics.DrawText(offscreen, sfont,
+                                  x0 + (n - 1) * (bw + gap_b) + bw - aw - 1,
+                                  y_lab, green, acc)
+
     def draw_static():
         # Top service bigger with its calling-at line; the rest compact.
         # --row-gap blank pixels between departures. The live clock shares
@@ -450,6 +530,8 @@ def run_matrix(args, get_board_data):
                               red, "No departures")
         elif args.pages[page_idx % len(args.pages)] == 2:
             draw_page2(board[0])
+        elif args.pages[page_idx % len(args.pages)] == 3:
+            draw_page3(board[0])
         elif args.layout == "static":
             draw_static()
         else:
@@ -493,9 +575,13 @@ def main():
                    help="Blank pixels between departures in static layout")
     p.add_argument("--flip-seconds", type=float, default=3,
                    help="Seconds per side when flipping Delayed/expected time")
-    p.add_argument("--pages", default="1,2",
-                   help="Comma-separated pages to cycle, e.g. '1,2' or '1'. "
-                        "Page 1 = board, page 2 = next departure big.")
+    p.add_argument("--pages", default="1,2,3",
+                   help="Comma-separated pages to cycle, e.g. '1,2,3' or '1'. "
+                        "Page 1 = board, 2 = next departure big, "
+                        "3 = formation diagram.")
+    p.add_argument("--coaches", type=int, default=4,
+                   help="Default coach count for the page-3 diagram "
+                        "(API formation/coaches overrides it)")
     p.add_argument("--page-seconds", type=float, default=10,
                    help="Seconds per page when cycling")
     p.add_argument("--mock", action="store_true",
@@ -536,9 +622,8 @@ def main():
         pages = [int(x) for x in args.pages.split(",") if x.strip()]
     except ValueError:
         sys.exit("--pages must be comma-separated numbers, e.g. '1,2'")
-    if not pages or any(x not in (1, 2) for x in pages):
-        sys.exit("--pages must be a combination of 1 and 2 "
-                 "(page 3 is not defined yet)")
+    if not pages or any(x not in (1, 2, 3) for x in pages):
+        sys.exit("--pages must be a combination of 1, 2 and 3")
     args.pages = pages
 
     if args.date == "":
@@ -572,6 +657,23 @@ def main():
                 notes = [d["calling_at"]]
             for n in notes[:2]:
                 print(f"  {n}")
+        if 3 in args.pages and board:
+            d = board[0]
+            t, dest, _, _ = format_departure(d)
+            cars, label = formation_of(d, default_cars=args.coaches)
+            print("--- page 3 ---")
+            print(f"{t} {dest} ({label})")
+            cells = []
+            for c in cars:
+                if c["first"] and c["accessible"]:
+                    cells.append("[#A#]")
+                elif c["first"]:
+                    cells.append("[#1ST#]")
+                elif c["accessible"]:
+                    cells.append("[~ACC~]")
+                else:
+                    cells.append("[    ]")
+            print("FRONT>" + "".join(cells))
         if not args.once:
             # keep polling in mock mode so you can watch it update
             try:
