@@ -705,8 +705,8 @@ def main():
     p.add_argument("--coaches", type=int, default=4,
                    help="Default coach count for the page-3 diagram "
                         "(API formation/coaches overrides it)")
-    p.add_argument("--coach-width", type=int, default=16,
-                   help="Coach card width in LEDs on page 3 (default 16)")
+    p.add_argument("--coach-width", type=int, default=32,
+                   help="Coach card width in LEDs on page 3 (default 32)")
     p.add_argument("--page-seconds", type=float, default=10,
                    help="Seconds per page when cycling")
     p.add_argument("--mock", action="store_true",
