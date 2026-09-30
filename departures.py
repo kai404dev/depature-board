@@ -450,7 +450,7 @@ def run_matrix(args, get_board_data):
         line2 = plat_part + status
         # tight pitches tuned for 10x20 + 5x7 on a 32px panel:
         # big(18) / status(24) / note(31, shares line with clock)
-        y2 = y_big + sfont.height - 3
+        y2 = y_big + sfont.height + 2
         graphics.DrawText(offscreen, sfont, 1, y2, sub_c,
                           fit_text(graphics, offscreen, sfont, sub_c,
                                    line2, width - 2))
@@ -463,7 +463,7 @@ def run_matrix(args, get_board_data):
         if not notes:
             notes = [f"{raw.get('headcode', '')} "
                      f"{raw.get('service_type_name', '')}".strip()]
-        y3 = y2 + sfont.height - 2
+        y3 = y2 + sfont.height
         if notes and y3 < height + 1:
             share3 = y3 >= height - sfont.height
             cap = min(width - 2, width - page_w - 4)
