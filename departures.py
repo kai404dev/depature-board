@@ -36,6 +36,7 @@ Test on Mac / without hardware:
 """
 
 import argparse
+import errno
 import json
 import os
 import sys
@@ -442,9 +443,23 @@ def run_matrix(args, L, get_board_data, layout_dir):
             last_hot_err = err
             if err:
                 print(err, file=sys.stderr)
+        if all(v == -1 for v in layout_mt.values()):
+            if not getattr(check_hot, "_perm_warned", False):
+                check_hot._perm_warned = True
+                print("layout files unreadable after privilege drop "
+                      "(running as 'daemon'?) - live editing disabled. "
+                      "Run with --led-no-drop-privs or fix permissions.",
+                      file=sys.stderr, flush=True)
         try:
             mt = os.path.getmtime(control_path)
-        except OSError:
+        except OSError as e:
+            if (e.errno in (errno.EACCES, errno.EPERM)
+                    and not getattr(check_hot, "_ctl_warned", False)):
+                check_hot._ctl_warned = True
+                print("control.json unreadable after privilege drop "
+                      "(running as 'daemon'?) - pause disabled. "
+                      "Run with --led-no-drop-privs or fix permissions.",
+                      file=sys.stderr, flush=True)
             paused_page = None
             control_mt = -1
             return paused_page
