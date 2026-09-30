@@ -38,6 +38,7 @@ Test on Mac / without hardware:
 import argparse
 import errno
 import json
+import math
 import os
 import sys
 import time
@@ -824,7 +825,9 @@ def run_matrix(args, L, get_board_data, layout_dir):
         if len(args.pages) < 2:
             frac = None
         elif held:
-            frac = 1.0
+            # held page: gentle breathe so the indicator stays alive
+            frac = 0.82 + 0.18 * (0.5 + 0.5 * math.sin(
+                now * 2 * math.pi / 2.0))
         else:
             frac = max(0.0, min(1.0, (now - page_since)
                                 / max(0.1, args.page_seconds)))
