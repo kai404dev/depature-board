@@ -31,8 +31,8 @@
     "y": "bottom"
   },
   "progress": {
-    "_comment": "Full-width page-dwell loading bar across the top edge.",
+    "_comment": "Page-flip progress bar drawn BEHIND the page number (digits knock it out).",
     "color": "time",
-    "height": 2
+    "backing": "text"
   }
 }
