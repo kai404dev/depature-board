@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 
 echo "==> Installing system build deps (needs sudo)..."
 sudo apt-get update
-sudo apt-get install -y python3-dev cython3 build-essential git
+sudo apt-get install -y python3-dev python3-pil cython3 build-essential git
 
 echo "==> Installing Python build backend in your venv..."
 # scikit-build-core + cython are needed to compile the bindings (see pyproject.toml)
