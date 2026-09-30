@@ -5,7 +5,11 @@ Peak Rail departures board for Waveshare RGB-Matrix / rpi-rgb-led-matrix.
 Calls:
   https://peakraildepartures.com/api/departures/?railway=PR&station=RWS&limit=3&date=2026-10-04
 
-and displays the next 3 departures.
+and for each departure its timetable, e.g.:
+  https://peakraildepartures.com/api/timetable/2M03/?date=2026-10-04&railway=PR
+
+to show "Calling at ..." under the destination, plus live status
+(On time / Delayed / Cancelled).
 
 Based on the example code in:
   RGB-Matrix-Px-xx/example/Raspberry-Pi/examples-api-use/text-example.cc
@@ -29,22 +33,27 @@ import urllib.parse
 import urllib.request
 
 API_BASE = "https://peakraildepartures.com/api/departures/"
+TIMETABLE_BASE = "https://peakraildepartures.com/api/timetable/"
 
-# Try to find a bundled BDF font in the example repo
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
-CANDIDATE_FONTS = [
-    os.path.join(THIS_DIR, "fonts", "5x7.bdf"),
-    os.path.join(THIS_DIR, "..", "RGB-Matrix-Px-xx", "example", "Raspberry-Pi", "fonts", "5x7.bdf"),
-    os.path.join(THIS_DIR, "..", "RGB-Matrix-Px-xx", "example", "Raspberry-Pi", "fonts", "6x9.bdf"),
-    os.path.join(THIS_DIR, "..", "RGB-Matrix-Px-xx", "example", "Raspberry-Pi", "fonts", "7x13.bdf"),
-]
 
 
-def find_default_font():
-    for p in CANDIDATE_FONTS:
-        if os.path.exists(p):
-            return p
-    return CANDIDATE_FONTS[1]  # best guess, error will show if missing
+def find_font(name):
+    p = os.path.join(THIS_DIR, "fonts", name)
+    if os.path.exists(p):
+        return p
+    p2 = os.path.join(THIS_DIR, "..", "RGB-Matrix-Px-xx", "example",
+                      "Raspberry-Pi", "fonts", name)
+    if os.path.exists(p2):
+        return p2
+    return p  # best guess, error will show if missing
+
+
+def api_get(url, timeout=10):
+    req = urllib.request.Request(url, headers={"Accept": "application/json",
+                                               "User-Agent": "departure-display/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.load(resp)
 
 
 def fetch_departures(railway="PR", station="RWS", limit=3, date="2026-10-04", timeout=10):
@@ -53,10 +62,7 @@ def fetch_departures(railway="PR", station="RWS", limit=3, date="2026-10-04", ti
     if date:  # allow --date "" for live (API defaults to next from now)
         params["date"] = date
     url = API_BASE + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"Accept": "application/json",
-                                               "User-Agent": "departure-display/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = json.load(resp)
+    data = api_get(url, timeout)
     if isinstance(data, dict) and "results" in data:
         return data["results"]
     if isinstance(data, list):
@@ -64,35 +70,91 @@ def fetch_departures(railway="PR", station="RWS", limit=3, date="2026-10-04", ti
     return []
 
 
+def fetch_timetable(headcode, date, railway, timeout=10):
+    """Call the timetable API for one service. Returns the timetable dict."""
+    params = {}
+    if date:
+        params["date"] = date
+    if railway:
+        params["railway"] = railway
+    url = (TIMETABLE_BASE + urllib.parse.quote(headcode) + "/?"
+           + urllib.parse.urlencode(params))
+    data = api_get(url, timeout)
+    return data if isinstance(data, dict) else {}
+
+
+def calling_at_text(timetable, origin=None):
+    """Build 'Calling at A, B, C' from timetable movements.
+
+    Only real stops count (STOP/DEST); pass-through (PASS) and the
+    origin movement are skipped.
+    """
+    stops = []
+    for m in timetable.get("movements") or []:
+        if m.get("removed"):
+            continue
+        if m.get("movement_type") not in ("STOP", "DEST"):
+            continue
+        code = m.get("station") or ""
+        if origin and code == origin and m.get("movement_type") != "DEST":
+            continue
+        name = m.get("station_name") or code
+        if name and name not in stops:
+            stops.append(name)
+    if not stops:
+        return ""
+    return "Calling at " + ", ".join(stops)
+
+
+def departure_status(d):
+    """Status text: delay / on-time info (no platform)."""
+    if d.get("is_cancelled"):
+        return "Cancelled"
+    if d.get("is_delayed"):
+        mins = d.get("delay_minutes", 0)
+        return f"Delayed +{mins}m" if mins else "Delayed"
+    if d.get("is_tbc"):
+        return "TBC"
+    return "On time"
+
+
 def format_departure(d):
     """
     Turn one API record into display strings.
-    Returns (line_text, status_text, flags_dict)
-    e.g. ("10:00 Matlock Riverside", "Plat 1", {...})
+    Returns (time_text, destination, status_text, raw_dict).
     """
     t = d.get("planned_time") or d.get("scheduled_time") or "??:??"
     dest = d.get("destination_name") or d.get("destination") or "?"
-    plat = d.get("platform") or "-"
+    return t, dest, departure_status(d), d
 
-    if d.get("is_cancelled"):
-        status = "CANCELLED"
-    elif d.get("is_delayed"):
-        mins = d.get("delay_minutes", 0)
-        status = f"+{mins}min" if mins else "DELAYED"
-    elif d.get("status") and d.get("status") not in ("upcoming", "scheduled", "on_time"):
-        status = str(d.get("status")).upper()
-    else:
-        status = f"Plat {plat}" if plat != "-" else "On time"
 
-    line = f"{t} {dest}"
-    return line, status, d
+def enrich_with_timetables(departures, railway, fallback_date, timeout=10):
+    """Attach a 'calling_at' string to each departure via the timetable API."""
+    for d in departures:
+        headcode = d.get("headcode")
+        if not headcode:
+            d["calling_at"] = ""
+            continue
+        try:
+            tt = fetch_timetable(headcode,
+                                 d.get("operating_date") or fallback_date,
+                                 railway or d.get("railway"),
+                                 timeout)
+            d["calling_at"] = calling_at_text(
+                tt, origin=d.get("origin") or d.get("station"))
+        except Exception as e:
+            print(f"Timetable fetch failed for {headcode}: {e}", file=sys.stderr)
+            d["calling_at"] = ""
+    return departures
 
 
 def format_console(departures):
     out = []
     for d in departures:
-        line, status, _ = format_departure(d)
-        out.append(f"{line:28s} {status}")
+        t, dest, status, _ = format_departure(d)
+        out.append(f"{t} {dest} -- {status}")
+        if d.get("calling_at"):
+            out.append(f"  {d['calling_at']}")
     return "\n".join(out)
 
 
@@ -100,7 +162,45 @@ def format_console(departures):
 # Matrix rendering (only imported when not in --mock mode)
 # ---------------------------------------------------------------------------
 
-def run_matrix(args, get_departures):
+def text_width(graphics, canvas, font, color, text):
+    """Measure pixel width by drawing offscreen (DrawText returns width)."""
+    return graphics.DrawText(canvas, font, 0, -100, color, text)
+
+
+def fit_text(graphics, canvas, font, color, text, max_w):
+    """Trim text until it fits max_w pixels."""
+    while text and text_width(graphics, canvas, font, color, text) > max_w:
+        text = text[:-1]
+    return text
+
+
+def draw_scrolled(graphics, canvas, font, text, y, color, width, scroll_x):
+    """Draw text; scroll it horizontally if wider than the display.
+
+    Returns the scroll_x to use on the next frame.
+    """
+    w = text_width(graphics, canvas, font, color, text)
+    if w <= width - 2:
+        graphics.DrawText(canvas, font, 1, y, color, text)
+        return width  # reset so a later long text starts offscreen-right
+    graphics.DrawText(canvas, font, scroll_x, y, color, text)
+    scroll_x -= 1
+    if scroll_x + w < 0:
+        scroll_x = width
+    return scroll_x
+
+
+def draw_main_line(graphics, canvas, font, t, dest, y, width,
+                   time_color, dest_color):
+    """Two-tone '10:00 Matlock Town' line, destination truncated to fit."""
+    t_part = t + " "
+    w_time = graphics.DrawText(canvas, font, 1, y, time_color, t_part)
+    dest = fit_text(graphics, canvas, font, dest_color, dest,
+                    width - w_time - 1)
+    graphics.DrawText(canvas, font, 1 + w_time, y, dest_color, dest)
+
+
+def run_matrix(args, get_board_data):
     from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 
     options = RGBMatrixOptions()
@@ -130,7 +230,7 @@ def run_matrix(args, get_departures):
     if args.led_no_drop_privs:
         options.drop_privileges = False
 
-    # Load the font BEFORE creating the matrix: RGBMatrix init drops
+    # Load fonts BEFORE creating the matrix: RGBMatrix init drops
     # root privileges to 'daemon' by default, which may not be able to
     # read files under e.g. /home/kai afterwards.
     font = graphics.Font()
@@ -138,86 +238,119 @@ def run_matrix(args, get_departures):
         sys.exit(f"Font not found: {args.font}\n"
                  f"Try e.g. --font ./fonts/7x13.bdf")
     font.LoadFont(args.font)
+    sfont = graphics.Font()
+    if not os.path.exists(args.font_small):
+        sys.exit(f"Small font not found: {args.font_small}\n"
+                 f"Try e.g. --font-small ./fonts/4x6.bdf")
+    sfont.LoadFont(args.font_small)
 
     matrix = RGBMatrix(options=options)
 
     # Classic departure-board palette
     white = graphics.Color(255, 255, 255)
     yellow = graphics.Color(255, 200, 0)
+    amber = graphics.Color(255, 140, 0)
     dim = graphics.Color(255, 140, 0)
     red = graphics.Color(255, 30, 30)
     green = graphics.Color(60, 255, 60)
-    black = graphics.Color(0, 0, 0)
 
     offscreen = matrix.CreateFrameCanvas()
+    width = offscreen.width
+    height = offscreen.height
 
-    departures = []
+    board = []
     last_fetch = 0
+    idx = 0
+    idx_since = time.time()
+    scroll_x = width
 
-    # Layout: 3 rows, one per departure. Each row = 2 lines:
-    #   main line: "10:00 Matlock Riverside"
-    #   sub line:  status ("Plat 1" / "CANCELLED" / "+5min")
-    # With 32px height and a 7px font that is 10-11px per departure.
-    # For taller fonts / bigger panels the spacing adapts.
+    def status_colors(raw):
+        if raw.get("is_cancelled"):
+            return dim, red
+        if raw.get("is_delayed"):
+            return white, red
+        return yellow, green
+
+    def draw_full(dep, y0, scroll_x):
+        """One departure in full detail, starting at vertical offset y0."""
+        t, dest, status, raw = format_departure(dep)
+        main_c, sub_c = status_colors(raw)
+        time_c = red if raw.get("is_cancelled") else main_c
+
+        y_main = y0 + 1 + font.baseline
+        draw_main_line(graphics, offscreen, font, t, dest, y_main,
+                       width, time_c, main_c if not raw.get("is_cancelled") else dim)
+
+        y_call = y_main + sfont.height + 1
+        if dep.get("calling_at"):
+            scroll_x = draw_scrolled(graphics, offscreen, sfont,
+                                     dep["calling_at"], y_call,
+                                     amber, width, scroll_x)
+        y_status = y_call + sfont.height + 1
+        if y_status < height:
+            graphics.DrawText(offscreen, sfont, 1, y_status, sub_c, status)
+        return scroll_x
+
+    def draw_static():
+        row_h = height // max(1, args.limit)
+        for i, dep in enumerate(board[:args.limit]):
+            y_top = i * row_h
+            t, dest, status, raw = format_departure(dep)
+            main_c, sub_c = status_colors(raw)
+            time_c = red if raw.get("is_cancelled") else main_c
+            y_main = y_top + 1 + font.baseline
+            # status right-aligned on the main line, then fit dest around it
+            sub_w = text_width(graphics, offscreen, sfont, sub_c, status)
+            sub_x = max(1, width - sub_w - 1)
+            graphics.DrawText(offscreen, sfont, sub_x, y_main, sub_c, status)
+            t_part = t + " "
+            w_time = graphics.DrawText(offscreen, font, 1, y_main,
+                                       time_c, t_part)
+            dest = fit_text(graphics, offscreen, font, main_c, dest,
+                            sub_x - w_time - 2)
+            graphics.DrawText(offscreen, font, 1 + w_time, y_main,
+                              main_c if not raw.get("is_cancelled") else dim,
+                              dest)
+            # calling-at underneath, only if the row is tall enough
+            y_call = y_main + sfont.height + 1
+            if dep.get("calling_at") and height and (y_top + row_h) - y_call >= 3:
+                graphics.DrawText(offscreen, sfont, 1, y_call, amber,
+                                  fit_text(graphics, offscreen, sfont, amber,
+                                           dep["calling_at"], width - 2))
+
     while True:
         now = time.time()
-        if now - last_fetch >= args.refresh:
+        if now - last_fetch >= args.refresh or not board:
             try:
-                departures = get_departures()
+                board = get_board_data()
             except Exception as e:  # keep old data, show error briefly
                 print(f"Fetch failed: {e}", file=sys.stderr)
-                if not departures:
-                    departures = []
+                if not board:
+                    board = []
             last_fetch = now
+            idx = 0
+            idx_since = now
+            scroll_x = width
 
         offscreen.Fill(0, 0, 0)
 
-        width = offscreen.width
-        height = offscreen.height
-        n = max(1, min(len(departures), args.limit))
-        row_h = height // max(1, args.limit)
-
-        if not departures:
-            graphics.DrawText(offscreen, font, 2, font.baseline,
+        if not board:
+            graphics.DrawText(offscreen, font, 2, 1 + font.baseline,
                               red, "No departures")
+        elif args.layout == "static":
+            draw_static()
         else:
-            for i, dep in enumerate(departures[:args.limit]):
-                line, status, raw = format_departure(dep)
-                y_top = i * row_h
-
-                # colour logic
-                if raw.get("is_cancelled"):
-                    main_c, sub_c = dim, red
-                elif raw.get("is_delayed"):
-                    main_c, sub_c = white, red
-                else:
-                    main_c, sub_c = yellow, green
-
-                # main line (time + destination), truncated to fit
-                # DrawText returns width in pixels; trim until it fits.
-                text = line
-                while text and graphics.DrawText(offscreen, font, 0, -100,
-                                                 main_c, text) > width - 2:
-                    text = text[:-1]
-                graphics.DrawText(offscreen, font, 1, y_top + font.baseline,
-                                  main_c, text)
-
-                # sub/status line, smaller offset, right-aligned if room
-                sub_w = graphics.DrawText(offscreen, font, 0, -100, sub_c, status)
-                sub_x = max(1, width - sub_w - 1)
-                # only draw sub-line if there is vertical room for it
-                sub_y = y_top + font.baseline + font.height - 1
-                if sub_y < (i + 1) * row_h + font.height // 2:
-                    graphics.DrawText(offscreen, font, sub_x, sub_y, sub_c, status)
-                else:
-                    # tiny panel: append status to main line instead
-                    pass
+            if len(board) > 1 and now - idx_since >= args.rotate_seconds:
+                idx = (idx + 1) % len(board)
+                idx_since = now
+                scroll_x = width
+            scroll_x = draw_full(board[idx % len(board)], 0, scroll_x)
 
         offscreen = matrix.SwapOnVSync(offscreen)
 
         if args.once:
             break
-        time.sleep(1)
+        time.sleep(0.08)
 
 
 def main():
@@ -229,8 +362,16 @@ def main():
                    help='Operating date YYYY-MM-DD. Use "" for live/next-from-now.')
     p.add_argument("--refresh", type=int, default=60,
                    help="Seconds between API calls (default 60)")
-    p.add_argument("--font", default=find_default_font(),
-                   help="Path to *.bdf font")
+    p.add_argument("--font", default=find_font("5x7.bdf"),
+                   help="Path to *.bdf font for the main line")
+    p.add_argument("--font-small", default=find_font("4x6.bdf"),
+                   help="Path to *.bdf font for calling-at / status lines")
+    p.add_argument("--layout", default="rotate", choices=["rotate", "static"],
+                   help="'rotate': one full-detail departure at a time (best for "
+                        "32px-high panels). 'static': all departures at once "
+                        "(needs a taller panel for calling-at lines).")
+    p.add_argument("--rotate-seconds", type=float, default=5,
+                   help="Seconds per departure in rotate layout (default 5)")
     p.add_argument("--mock", action="store_true",
                    help="Print to console instead of driving the LED matrix")
     p.add_argument("--once", action="store_true",
@@ -268,30 +409,31 @@ def main():
     if args.date == "":
         args.date = None
 
-    def get_departures():
-        return fetch_departures(args.railway, args.station,
+    def get_board_data():
+        deps = fetch_departures(args.railway, args.station,
                                 args.limit, args.date)
+        return enrich_with_timetables(deps, args.railway, args.date)
 
     if args.mock:
         try:
-            deps = get_departures()
+            board = get_board_data()
         except Exception as e:
             sys.exit(f"API fetch failed: {e}")
         print(f"# {args.railway}/{args.station} date={args.date or 'live'}")
-        print(format_console(deps))
+        print(format_console(board))
         if not args.once:
             # keep polling in mock mode so you can watch it update
             try:
                 while True:
                     time.sleep(args.refresh)
-                    deps = get_departures()
+                    board = get_board_data()
                     print("---")
-                    print(format_console(deps))
+                    print(format_console(board))
             except KeyboardInterrupt:
                 pass
         return
 
-    run_matrix(args, get_departures)
+    run_matrix(args, get_board_data)
 
 
 if __name__ == "__main__":
