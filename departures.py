@@ -111,8 +111,7 @@ def departure_status(d):
     if d.get("is_cancelled"):
         return "Cancelled"
     if d.get("is_delayed"):
-        mins = d.get("delay_minutes", 0)
-        return f"Delayed +{mins}m" if mins else "Delayed"
+        return "Delayed"
     if d.get("is_tbc"):
         return "TBC"
     return "On time"
@@ -220,22 +219,42 @@ def board_signature(departures):
     return json.dumps(rows, sort_keys=True)
 
 
+def car_capacity(c):
+    """Load factor 0..1 for one car. Defaults to 10% when the API
+    sends nothing. Accepts fraction or percent under various keys."""
+    for k in ("capacity", "load", "occupancy", "occupancy_percent",
+              "percent", "loading"):
+        if not isinstance(c, dict) or c.get(k) is None:
+            continue
+        try:
+            v = float(c[k])
+        except (TypeError, ValueError):
+            continue
+        if v > 1:
+            v /= 100.0
+        return max(0.0, min(1.0, v))
+    return 0.10
+
+
 def formation_of(dep, default_cars=4):
     """Coach formation for the diagram page.
 
     Custom API bits (optional) per departure:
-      "formation": {"cars": [{"first": true, "accessible": false}, ...],
+      "formation": {"cars": [{"first": true, "accessible": false,
+                              "capacity": 0.35}, ...],
                     "label": "4 coaches"}   # label optional
     or simply:
       "coaches": 4
 
+    Car capacity defaults to 10% when absent (fraction or percent).
     Default: 4 cards, first class at the front (first card),
     accessible at the last car. Returns (cars, label).
     """
     f = dep.get("formation") or {}
     if isinstance(f, dict) and isinstance(f.get("cars"), list) and f["cars"]:
         cars = [{"first": bool(c.get("first") or c.get("first_class")),
-                 "accessible": bool(c.get("accessible"))}
+                 "accessible": bool(c.get("accessible")),
+                 "capacity": car_capacity(c)}
                 for c in f["cars"] if isinstance(c, dict)]
         if cars:
             n = len(cars)
@@ -244,7 +263,8 @@ def formation_of(dep, default_cars=4):
     n = dep.get("coaches") if isinstance(dep.get("coaches"), int) else 0
     if not n or n < 1:
         n = default_cars
-    cars = [{"first": i == 0, "accessible": i == n - 1} for i in range(n)]
+    cars = [{"first": i == 0, "accessible": i == n - 1,
+             "capacity": car_capacity({})} for i in range(n)]
     return cars, f"{n} coach" + ("" if n == 1 else "es")
 
 
@@ -312,6 +332,11 @@ def run_matrix(args, get_board_data):
         sys.exit(f"Big font not found: {args.font_big}\n"
                  f"Try e.g. --font-big ./fonts/7x13.bdf")
     bfont.LoadFont(args.font_big)
+    tfont = graphics.Font()
+    if not os.path.exists(args.font_tiny):
+        sys.exit(f"Tiny font not found: {args.font_tiny}\n"
+                 f"Try e.g. --font-tiny ./fonts/tom-thumb.bdf")
+    tfont.LoadFont(args.font_tiny)
 
     matrix = RGBMatrix(options=options)
 
@@ -341,10 +366,25 @@ def run_matrix(args, get_board_data):
             return amber, red
         return amber, green
 
-    def draw_row(dep, fnt, y_base, clock_x=None):
+    def clock_geom():
+        """Live clock text + centered geometry, pinned to the bottom."""
+        s = time.strftime("%H:%M:%S")
+        w = text_width(graphics, offscreen, sfont, amber, s)
+        return s, max(1, (width - w) // 2), w
+
+    def draw_page_num(n):
+        """Page indicator bottom-right. Returns its pixel width."""
+        lab = f"{n}/{len(args.pages)}"
+        w = text_width(graphics, offscreen, tfont, amber, lab)
+        graphics.DrawText(offscreen, tfont, width - w - 1, height - 1,
+                          amber, lab)
+        return w
+
+    def draw_row(dep, fnt, y_base, clock_x=None, right_extra=0):
         """Service main line: time + platform yellow, destination orange,
         status green/red. clock_x caps the destination so it never runs
-        under the centered clock on the last row."""
+        under the centered clock; right_extra reserves pixels on the
+        right (page number)."""
         t, dest, status, raw = format_departure(dep)
         status = live_status(raw, args.flip_seconds)
         _, sub_c = status_colors(raw)
@@ -352,6 +392,7 @@ def run_matrix(args, get_board_data):
         plat_part = (plat + " ") if plat else ""
         right_w = text_width(graphics, offscreen, fnt, amber, plat_part)
         right_w += text_width(graphics, offscreen, fnt, sub_c, status)
+        right_w += right_extra
         sub_x = max(1, width - right_w - 1)
         if plat:
             graphics.DrawText(offscreen, fnt, sub_x, y_base,
@@ -382,8 +423,9 @@ def run_matrix(args, get_board_data):
         draw_row(dep, font, y0 + 1 + font.baseline)
         draw_calling(dep, y0 + 1 + font.baseline + sfont.height + 1)
 
-    def draw_page2(dep):
-        """Next departure nice and big, with API notes underneath."""
+    def draw_page2(dep, page):
+        """Next departure nice and big, with API notes underneath.
+        Live clock bottom-middle, page number bottom-right."""
         t, dest, _, raw = format_departure(dep)
         _, sub_c = status_colors(raw)
         plat = (raw.get("platform") or "").strip()
@@ -400,26 +442,32 @@ def run_matrix(args, get_board_data):
         status = live_status(raw, args.flip_seconds)
         plat_part = (f"Plat {plat} " if plat else "")
         line2 = plat_part + status
-        y2 = y_big + sfont.height + 1
+        y2 = y_big + sfont.height
         graphics.DrawText(offscreen, sfont, 1, y2, sub_c,
                           fit_text(graphics, offscreen, sfont, sub_c,
                                    line2, width - 2))
 
+        clock_s, clock_x, clock_w = clock_geom()
+        page_w = draw_page_num(page)
         notes = list(dep.get("note_lines") or [])
         if not notes and dep.get("calling_at"):
             notes = [dep["calling_at"]]
         if not notes:
             notes = [f"{raw.get('headcode', '')} "
                      f"{raw.get('service_type_name', '')}".strip()]
-        y3 = y2 + sfont.height + 1
-        if notes and y3 < height + sfont.height:
+        y3 = y2 + sfont.height
+        if notes and y3 < height:
+            cap = min(width - 2, clock_x - 3, width - page_w - 4)
             graphics.DrawText(offscreen, sfont, 1, y3, amber,
                               fit_text(graphics, offscreen, sfont, amber,
-                                       notes[0], width - 2))
+                                       notes[0], max(0, cap)))
+        graphics.DrawText(offscreen, sfont, clock_x, height - 1,
+                          amber, clock_s)
 
-    def draw_page3(dep):
-        """Train formation diagram: coach cards, first class at the front
-        (filled), accessible car last (green)."""
+    def draw_page3(dep, page):
+        """Train formation diagram: coach cards with capacity fill,
+        first class at the pointy front (yellow), accessible car last
+        (green). Live clock bottom-middle, page number bottom-right."""
         t, dest, _, raw = format_departure(dep)
         cars, label = formation_of(dep, default_cars=args.coaches)
         n = len(cars)
@@ -433,28 +481,46 @@ def run_matrix(args, get_board_data):
                         width - lab_w - 4)
         graphics.DrawText(offscreen, sfont, 1, y_head, yellow, head)
 
-        # coach cards row
-        margin, gap_b, bh = 2, 3, 12
+        # coach cards row; first car gets a pointy (slanted) front
+        margin, gap_b, bh, slant = 2, 3, 12, 6
         bw = max(8, (width - 2 * margin - (n - 1) * gap_b) // max(1, n))
         total = n * bw + (n - 1) * gap_b
         x0 = max(0, (width - total) // 2)
         y_top = y_head + 3
+        yb = y_top + bh - 1
         for i, car in enumerate(cars):
             x = x0 + i * (bw + gap_b)
+            x1 = x + bw - 1
             outline = green if car["accessible"] else amber
-            if car["first"]:
-                for yy in range(y_top + 1, y_top + bh - 1):
-                    for xx in range(x + 1, x + bw - 1):
-                        offscreen.SetPixel(xx, yy, amber.red,
-                                           amber.green, amber.blue)
-            graphics.DrawLine(offscreen, x, y_top, x + bw - 1, y_top, outline)
-            graphics.DrawLine(offscreen, x, y_top + bh - 1, x + bw - 1,
-                              y_top + bh - 1, outline)
-            graphics.DrawLine(offscreen, x, y_top, x, y_top + bh - 1, outline)
-            graphics.DrawLine(offscreen, x + bw - 1, y_top, x + bw - 1,
-                              y_top + bh - 1, outline)
+            # capacity fill from the bottom (yellow 1st, amber standard)
+            fill_h = int((bh - 2) * car["capacity"])
+            if fill_h > 0:
+                fcol = yellow if car["first"] else amber
+                for yy in range(max(y_top + 1, yb - fill_h), yb):
+                    if i == 0:
+                        frac = (yy - y_top) / max(1, bh - 1)
+                        xs = x + 1 + int(slant * (1 - frac))
+                    else:
+                        xs = x + 1
+                    for xx in range(xs, x1):
+                        offscreen.SetPixel(xx, yy, fcol.red,
+                                           fcol.green, fcol.blue)
+            if i == 0:
+                graphics.DrawLine(offscreen, x, yb, x1, yb, outline)
+                graphics.DrawLine(offscreen, x1, y_top, x1, yb, outline)
+                graphics.DrawLine(offscreen, x + slant, y_top, x1, y_top,
+                                  outline)
+                graphics.DrawLine(offscreen, x, yb, x + slant, y_top, outline)
+            else:
+                graphics.DrawLine(offscreen, x, y_top, x1, y_top, outline)
+                graphics.DrawLine(offscreen, x, yb, x1, yb, outline)
+                graphics.DrawLine(offscreen, x, y_top, x, yb, outline)
+                graphics.DrawLine(offscreen, x1, y_top, x1, yb, outline)
 
-        # labels under the special cars
+        clock_s, clock_x, clock_w = clock_geom()
+        page_w = draw_page_num(page)
+
+        # labels under the special cars (skip ACC if it hits the clock)
         y_lab = y_top + bh + sfont.height - 1
         if y_lab < height:
             if cars[0]["first"]:
@@ -463,23 +529,25 @@ def run_matrix(args, get_board_data):
             if cars[-1]["accessible"]:
                 acc = "ACC"
                 aw = text_width(graphics, offscreen, sfont, green, acc)
-                graphics.DrawText(offscreen, sfont,
-                                  x0 + (n - 1) * (bw + gap_b) + bw - aw - 1,
-                                  y_lab, green, acc)
+                ax = x0 + (n - 1) * (bw + gap_b) + bw // 2 - aw // 2
+                if ax + aw < clock_x - 2 or ax > clock_x + clock_w + 2:
+                    graphics.DrawText(offscreen, sfont, ax, y_lab,
+                                      green, acc)
 
-    def draw_static():
+        graphics.DrawText(offscreen, sfont, clock_x, height - 1,
+                          amber, clock_s)
+
+    def draw_static(page):
         # Top service bigger with its calling-at line; the rest compact.
-        # --row-gap blank pixels between departures. The live clock shares
-        # the last row, centered (a dedicated clock line does not fit in
-        # 32px alongside 3 services + calling-at).
+        # --row-gap blank pixels between departures. Live clock pinned
+        # bottom-middle, page number bottom-right.
         rows = board[:args.limit]
         if not rows:
             return
         gap = args.row_gap
         tight = max(4, sfont.height - 2)  # snug pitch; glyph boxes overlap
-        clock_s = time.strftime("%H:%M:%S")
-        clock_w = text_width(graphics, offscreen, sfont, amber, clock_s)
-        clock_x = max(1, (width - clock_w) // 2)
+        clock_s, clock_x, clock_w = clock_geom()
+        page_w = draw_page_num(page)
 
         y = font.baseline
         draw_row(rows[0], font, y)
@@ -491,10 +559,14 @@ def run_matrix(args, get_board_data):
             if y >= height:
                 break
             last = (n == len(rest) - 1)
+            share = last and y >= height - sfont.height
             draw_row(dep, sfont, y,
-                     clock_x=clock_x if last else None)
+                     clock_x=clock_x if share else None,
+                     right_extra=(page_w + 2) if last else 0)
             if last:
-                graphics.DrawText(offscreen, sfont, clock_x, y,
+                # clock pinned to the bottom (shares the row on 32px)
+                graphics.DrawText(offscreen, sfont, clock_x,
+                                  y if share else height - 1,
                                   amber, clock_s)
 
     while True:
@@ -528,12 +600,13 @@ def run_matrix(args, get_board_data):
         if not board:
             graphics.DrawText(offscreen, font, 2, 1 + font.baseline,
                               red, "No departures")
-        elif args.pages[page_idx % len(args.pages)] == 2:
-            draw_page2(board[0])
-        elif args.pages[page_idx % len(args.pages)] == 3:
-            draw_page3(board[0])
+            draw_page_num(args.pages[page_idx % len(args.pages)])
+        elif (page := args.pages[page_idx % len(args.pages)]) == 2:
+            draw_page2(board[0], page)
+        elif page == 3:
+            draw_page3(board[0], page)
         elif args.layout == "static":
-            draw_static()
+            draw_static(page)
         else:
             if len(board) > 1 and now - idx_since >= args.rotate_seconds:
                 idx = (idx + 1) % len(board)
@@ -565,6 +638,8 @@ def main():
                         "calling-at and clock lines")
     p.add_argument("--font-big", default=find_font("7x13.bdf"),
                    help="Path to *.bdf font for the page-2 headline")
+    p.add_argument("--font-tiny", default=find_font("tom-thumb.bdf"),
+                   help="Path to *.bdf font for the page numbers")
     p.add_argument("--layout", default="static", choices=["rotate", "static"],
                    help="'static': all departures at once, 2 lines each "
                         "(main + calling-at). 'rotate': one full-detail "
@@ -665,14 +740,9 @@ def main():
             print(f"{t} {dest} ({label})")
             cells = []
             for c in cars:
-                if c["first"] and c["accessible"]:
-                    cells.append("[#A#]")
-                elif c["first"]:
-                    cells.append("[#1ST#]")
-                elif c["accessible"]:
-                    cells.append("[~ACC~]")
-                else:
-                    cells.append("[    ]")
+                tag = ("1ST " if c["first"] else "") + \
+                      ("ACC " if c["accessible"] else "")
+                cells.append(f"[{tag}{c['capacity']:.0%}]")
             print("FRONT>" + "".join(cells))
         if not args.once:
             # keep polling in mock mode so you can watch it update
