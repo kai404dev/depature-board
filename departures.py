@@ -150,11 +150,16 @@ def format_departure(d):
 
 
 def enrich_with_timetables(departures, railway, fallback_date, timeout=10):
-    """Attach a 'calling_at' string to each departure via the timetable API."""
+    """Attach 'calling_at' + 'note_lines' to each departure.
+
+    note_lines holds free-text info from the APIs: cancellation /
+    delay / amendment reasons plus the timetable's operational notes.
+    """
     for d in departures:
+        d["calling_at"] = ""
+        d["note_lines"] = []
         headcode = d.get("headcode")
         if not headcode:
-            d["calling_at"] = ""
             continue
         try:
             tt = fetch_timetable(headcode,
@@ -163,10 +168,29 @@ def enrich_with_timetables(departures, railway, fallback_date, timeout=10):
                                  timeout)
             d["calling_at"] = calling_at_text(
                 tt, origin=d.get("origin") or d.get("station"))
+            notes = []
+            if d.get("is_cancelled") and d.get("cancellation_reason"):
+                notes.append(d["cancellation_reason"])
+            if d.get("is_delayed") and d.get("delay_reason"):
+                notes.append(d["delay_reason"])
+            if d.get("is_amended") and d.get("amendment_note"):
+                notes.append(d["amendment_note"])
+            for n in tt.get("operational_notes") or []:
+                if n and str(n) not in notes:
+                    notes.append(str(n))
+            d["note_lines"] = notes
         except Exception as e:
             print(f"Timetable fetch failed for {headcode}: {e}", file=sys.stderr)
-            d["calling_at"] = ""
     return departures
+
+
+def live_status(raw, flip_seconds):
+    """Status text, flipping Delayed <-> expected time like real boards."""
+    base = departure_status(raw)
+    if raw.get("is_delayed") and not raw.get("is_cancelled"):
+        if int(time.time() // flip_seconds) % 2 == 1:
+            return f"Exp {expected_time(raw)}"
+    return base
 
 
 def format_console(departures):
@@ -189,7 +213,8 @@ def board_signature(departures):
     for d in departures:
         t, dest, status, raw = format_departure(d)
         rows.append((t, dest, status, raw.get("platform"),
-                     d.get("calling_at", "")))
+                     d.get("calling_at", ""),
+                     tuple(d.get("note_lines") or [])))
     return json.dumps(rows, sort_keys=True)
 
 
@@ -252,6 +277,11 @@ def run_matrix(args, get_board_data):
         sys.exit(f"Small font not found: {args.font_small}\n"
                  f"Try e.g. --font-small ./fonts/4x6.bdf")
     sfont.LoadFont(args.font_small)
+    bfont = graphics.Font()
+    if not os.path.exists(args.font_big):
+        sys.exit(f"Big font not found: {args.font_big}\n"
+                 f"Try e.g. --font-big ./fonts/7x13.bdf")
+    bfont.LoadFont(args.font_big)
 
     matrix = RGBMatrix(options=options)
 
@@ -271,6 +301,8 @@ def run_matrix(args, get_board_data):
     last_sig = None
     idx = 0
     idx_since = time.time()
+    page_idx = 0
+    page_since = time.time()
 
     def status_colors(raw):
         if raw.get("is_cancelled"):
@@ -284,10 +316,7 @@ def run_matrix(args, get_board_data):
         status green/red. clock_x caps the destination so it never runs
         under the centered clock on the last row."""
         t, dest, status, raw = format_departure(dep)
-        if raw.get("is_delayed") and not raw.get("is_cancelled"):
-            # flip between "Delayed" and the expected time, like real boards
-            if int(time.time() // args.flip_seconds) % 2 == 1:
-                status = f"Exp {expected_time(raw)}"
+        status = live_status(raw, args.flip_seconds)
         _, sub_c = status_colors(raw)
         plat = (raw.get("platform") or "").strip()
         plat_part = (plat + " ") if plat else ""
@@ -322,6 +351,41 @@ def run_matrix(args, get_board_data):
         """One departure in full detail, starting at vertical offset y0."""
         draw_row(dep, font, y0 + 1 + font.baseline)
         draw_calling(dep, y0 + 1 + font.baseline + sfont.height + 1)
+
+    def draw_page2(dep):
+        """Next departure nice and big, with API notes underneath."""
+        t, dest, _, raw = format_departure(dep)
+        _, sub_c = status_colors(raw)
+        plat = (raw.get("platform") or "").strip()
+
+        y_big = bfont.baseline + 1
+        t_part = t + " "
+        w_time = graphics.DrawText(offscreen, bfont, 1, y_big,
+                                   yellow, t_part)
+        dest = fit_text(graphics, offscreen, bfont, amber, dest,
+                        width - w_time - 1)
+        graphics.DrawText(offscreen, bfont, 1 + w_time, y_big,
+                          amber, dest)
+
+        status = live_status(raw, args.flip_seconds)
+        plat_part = (f"Plat {plat} " if plat else "")
+        line2 = plat_part + status
+        y2 = y_big + sfont.height + 1
+        graphics.DrawText(offscreen, sfont, 1, y2, sub_c,
+                          fit_text(graphics, offscreen, sfont, sub_c,
+                                   line2, width - 2))
+
+        notes = list(dep.get("note_lines") or [])
+        if not notes and dep.get("calling_at"):
+            notes = [dep["calling_at"]]
+        if not notes:
+            notes = [f"{raw.get('headcode', '')} "
+                     f"{raw.get('service_type_name', '')}".strip()]
+        y3 = y2 + sfont.height + 1
+        if notes and y3 < height + sfont.height:
+            graphics.DrawText(offscreen, sfont, 1, y3, amber,
+                              fit_text(graphics, offscreen, sfont, amber,
+                                       notes[0], width - 2))
 
     def draw_static():
         # Top service bigger with its calling-at line; the rest compact.
@@ -368,16 +432,24 @@ def run_matrix(args, get_board_data):
                     last_sig = sig
                     idx = 0
                     idx_since = now
+                    page_idx = 0
+                    page_since = now
                 # else: data unchanged, keep the current display as-is
             elif not board:
                 board = []
             last_fetch = now
+
+        if len(args.pages) > 1 and now - page_since >= args.page_seconds:
+            page_idx = (page_idx + 1) % len(args.pages)
+            page_since = now
 
         offscreen.Fill(0, 0, 0)
 
         if not board:
             graphics.DrawText(offscreen, font, 2, 1 + font.baseline,
                               red, "No departures")
+        elif args.pages[page_idx % len(args.pages)] == 2:
+            draw_page2(board[0])
         elif args.layout == "static":
             draw_static()
         else:
@@ -409,6 +481,8 @@ def main():
     p.add_argument("--font-small", default=find_font("4x6.bdf"),
                    help="Path to *.bdf font for other services, "
                         "calling-at and clock lines")
+    p.add_argument("--font-big", default=find_font("7x13.bdf"),
+                   help="Path to *.bdf font for the page-2 headline")
     p.add_argument("--layout", default="static", choices=["rotate", "static"],
                    help="'static': all departures at once, 2 lines each "
                         "(main + calling-at). 'rotate': one full-detail "
@@ -419,6 +493,11 @@ def main():
                    help="Blank pixels between departures in static layout")
     p.add_argument("--flip-seconds", type=float, default=3,
                    help="Seconds per side when flipping Delayed/expected time")
+    p.add_argument("--pages", default="1,2",
+                   help="Comma-separated pages to cycle, e.g. '1,2' or '1'. "
+                        "Page 1 = board, page 2 = next departure big.")
+    p.add_argument("--page-seconds", type=float, default=10,
+                   help="Seconds per page when cycling")
     p.add_argument("--mock", action="store_true",
                    help="Print to console instead of driving the LED matrix")
     p.add_argument("--once", action="store_true",
@@ -453,6 +532,15 @@ def main():
                    help="Switch if your matrix has inverse colors on.")
     args = p.parse_args()
 
+    try:
+        pages = [int(x) for x in args.pages.split(",") if x.strip()]
+    except ValueError:
+        sys.exit("--pages must be comma-separated numbers, e.g. '1,2'")
+    if not pages or any(x not in (1, 2) for x in pages):
+        sys.exit("--pages must be a combination of 1 and 2 "
+                 "(page 3 is not defined yet)")
+    args.pages = pages
+
     if args.date == "":
         args.date = None
 
@@ -468,6 +556,22 @@ def main():
             sys.exit(f"API fetch failed: {e}")
         print(f"# {args.railway}/{args.station} date={args.date or 'live'}")
         print(format_console(board))
+        if 2 in args.pages and board:
+            d = board[0]
+            t, dest, status, raw = format_departure(d)
+            print("--- page 2 ---")
+            print(f"{t} {dest}")
+            plat = (raw.get("platform") or "").strip()
+            print(f"{('Plat ' + plat + ' ') if plat else ''}{status}", end="")
+            if raw.get("is_delayed"):
+                print(f" (Exp {expected_time(raw)})")
+            else:
+                print()
+            notes = list(d.get("note_lines") or [])
+            if not notes and d.get("calling_at"):
+                notes = [d["calling_at"]]
+            for n in notes[:2]:
+                print(f"  {n}")
         if not args.once:
             # keep polling in mock mode so you can watch it update
             try:
