@@ -379,7 +379,7 @@ def fit_text(graphics, canvas, font, color, text, max_w):
     return text
 
 
-def run_matrix(args, L, get_board_data, layout_dir):
+def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 
     options = RGBMatrixOptions()
@@ -873,7 +873,9 @@ def run_matrix(args, L, get_board_data, layout_dir):
                 page_since = now
             cur_page = args.pages[page_idx % len(args.pages)]
 
-        if len(args.pages) < 2:
+        if preview_frac is not None:
+            frac = preview_frac
+        elif len(args.pages) < 2:
             frac = None
         elif held:
             frac = 1.0
@@ -1003,7 +1005,8 @@ def main():
             a2.pages = [pg]
             a2.once = True
             a2.ignore_control = True
-            run_matrix(a2, L, lambda: board, args.layout_dir)
+            run_matrix(a2, L, lambda: board, args.layout_dir,
+                       preview_frac=0.5)
             print(f"--- page {pg} preview ({W}x{H}) ---")
             rec.report()
         return
