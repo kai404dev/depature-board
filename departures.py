@@ -185,8 +185,7 @@ def load_layout(layout_dir, overlay=None):
     L["page_num"] = clock_page_num(pgm, path, "page_num")
     prg = _section(raw, path, "progress")
     L["progress"] = {"color": _color(prg, path, "progress", colors),
-                     "backing": _color(prg, path, "progress", colors,
-                                       "backing")}
+                     "height": _num(prg, path, "progress", "height")}
 
     raw1, path1 = read("page1.json")
     top = _section(raw1, path1, "top")
@@ -508,25 +507,23 @@ def run_matrix(args, L, get_board_data, layout_dir):
         return lab, fnt, resolve_x(spec["x"], w, width), w, \
             resolve_y(spec["y"], height)
 
-    def draw_page_chrome(page, frac):
-        """Progress bar behind the page number, digits knocking it out.
-        frac None hides the bar (single page); 1.0 = held page."""
+    def draw_progress_bar(frac):
+        """Full-width loading bar across the top edge: page dwell
+        filling left to right. frac None hides it (single page)."""
+        if frac is None:
+            return
         P = L["progress"]
+        col = C[P["color"]]
+        fw = int(width * frac)
+        for yy in range(0, min(height, P["height"])):
+            for xx in range(0, fw):
+                offscreen.SetPixel(xx, yy, col.red, col.green, col.blue)
+
+    def draw_page_label(page):
+        """Plain page indicator (colour from layout)."""
         lab, fnt, x, w, y = page_label_geom(page)
-        if frac is not None:
-            back, fill = C[P["backing"]], C[P["color"]]
-            x0, x1 = x - 4, x + w + 4
-            y0 = y - fnt.height + 1 - 1
-            for yy in range(max(0, y0), min(height, y + 1)):
-                for xx in range(max(0, x0), min(width, x1 + 1)):
-                    offscreen.SetPixel(xx, yy, back.red,
-                                       back.green, back.blue)
-            fw = int((x1 - x0 + 1) * frac)
-            for yy in range(max(0, y0), min(height, y + 1)):
-                for xx in range(x0, min(x1 + 1, x0 + fw)):
-                    offscreen.SetPixel(xx, yy, fill.red,
-                                       fill.green, fill.blue)
-        graphics.DrawText(offscreen, fnt, x, y, C["mark"], lab)
+        spec = L["page_num"]
+        graphics.DrawText(offscreen, fnt, x, y, C[spec["color"]], lab)
 
     def draw_row(dep, fnt, seg, y_base, clock_x=None, right_extra=0):
         """Service row: time + platform + destination + status, all in
@@ -642,7 +639,7 @@ def run_matrix(args, L, get_board_data, layout_dir):
         graphics.DrawText(offscreen, clock_fnt, clock_x,
                           resolve_y(L["clock"]["y"], height),
                           C[L["clock"]["color"]], clock_s)
-        draw_page_chrome(page, frac)
+        draw_page_label(page)
 
     def draw_page3(dep, page, frac):
         """Train formation diagram: fixed-width coach cards, pointy front
@@ -751,7 +748,7 @@ def run_matrix(args, L, get_board_data, layout_dir):
         graphics.DrawText(offscreen, clock_fnt, clock_x,
                           resolve_y(L["clock"]["y"], height),
                           C[L["clock"]["color"]], clock_s)
-        draw_page_chrome(page, frac)
+        draw_page_label(page)
 
     def draw_static(page, frac):
         # Lead service + calling-at, then compact rows on a fixed pitch.
@@ -801,7 +798,7 @@ def run_matrix(args, L, get_board_data, layout_dir):
             graphics.DrawText(offscreen, clock_fnt, clock_x,
                               resolve_y(L["clock"]["y"], height),
                               C[L["clock"]["color"]], clock_s)
-        draw_page_chrome(page, frac)
+        draw_page_label(page)
 
     while True:
         now = time.time()
@@ -842,19 +839,18 @@ def run_matrix(args, L, get_board_data, layout_dir):
         if len(args.pages) < 2:
             frac = None
         elif held:
-            # held page: gentle breathe so the indicator stays alive
-            frac = 0.82 + 0.18 * (0.5 + 0.5 * math.sin(
-                now * 2 * math.pi / 2.0))
+            frac = 1.0
         else:
             frac = max(0.0, min(1.0, (now - page_since)
                                 / max(0.1, args.page_seconds)))
 
         offscreen.Fill(0, 0, 0)
+        draw_progress_bar(frac)
 
         if not board:
             graphics.DrawText(offscreen, F["top"], 2, 1 + F["top"].baseline,
                               C["alert"], "No departures")
-            draw_page_chrome(cur_page, frac)
+            draw_page_label(cur_page)
         elif cur_page == 2:
             draw_page2(board[0], cur_page, frac)
         elif cur_page == 3:
@@ -866,7 +862,7 @@ def run_matrix(args, L, get_board_data, layout_dir):
                 idx = (idx + 1) % len(board)
                 idx_since = now
             draw_full(board[idx % len(board)], 0)
-            draw_page_chrome(cur_page, frac)
+            draw_page_label(cur_page)
 
         offscreen = matrix.SwapOnVSync(offscreen)
 
