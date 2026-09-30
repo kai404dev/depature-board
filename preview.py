@@ -191,7 +191,15 @@ class Recorder:
         return w
 
     def text_op(self, font, x, y, s, color=None):
-        oid = self._next_id()
+        # Same text redrawn within 2px (outline/border technique) shares
+        # one id so it isn't flagged as overlapping itself.
+        last = getattr(self, "_last_text", None)
+        if last and last[0] == s and abs(last[1] - x) <= 2 \
+                and abs(last[2] - y) <= 2:
+            oid = last[3]
+        else:
+            oid = self._next_id()
+        self._last_text = (s, x, y, oid)
         self._cur = (oid, False)
         w = font.text_width(s)
         self.ops.append((oid, "text", f"{os.path.basename(font.path or '?')} "

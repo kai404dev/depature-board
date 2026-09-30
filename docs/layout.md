@@ -42,6 +42,7 @@ it, compact rows `rows.dy` below calling repeating every `rows.pitch`.
 - `rows` — `{font, dy, pitch}` for services 2+. Rows past the screen
   edge are skipped with a `service row(s) off-screen` warning (max
   once a minute) — if you see it, the fonts/pitch don't fit the panel.
+- `plat` — `{dx}` slides the platform number like Exp (`0` = snug).
 - `exp` — `{dx, gap}` for a flipped delayed status, rendered as two
   parts (`Exp` + `10:25`) in the row font. The time stays right-aligned;
   `dx` slides the `Exp` label (`0` = snug). Expected time = planned
@@ -62,12 +63,13 @@ it, compact rows `rows.dy` below calling repeating every `rows.pitch`.
 
 - `header` — `{font, y, time_color, dest_color}` full-width headline.
 - `coach` — `{width, height, gap, margin, slant, dy, outline, fill,
-  mark, mark_off, default_coaches}`. Cards are fixed `width` LEDs,
+  mark_dy, default_coaches}`. Cards are fixed `width` LEDs,
   left-aligned from `margin`; first car gets a slanted front of
   `slant` px; cards start `dy` below the header. Interiors fill to the
   per-car load (`capacity`/`load`/`occupancy`, fraction or percent,
   default 10%) in `fill`; class markers (`1ST`, wheelchair icon) draw
-  in `mark` on fill, `mark_off` off it. API override per departure:
+  in amber with a black border, sitting `mark_dy` lower. API override
+  per departure:
   `"formation": {"cars": [{"first": true, "accessible": false,
   "capacity": 0.35}, ...]}` or `"coaches": N`.
 - `letters` — `{font, color, dy}` below the card bottoms: carriage

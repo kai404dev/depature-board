@@ -214,6 +214,8 @@ def load_layout(layout_dir, overlay=None):
     exp = _section(raw1, path1, "exp")
     L["page1"]["exp"] = {"dx": _num(exp, path1, "exp", "dx"),
                          "gap": _num(exp, path1, "exp", "gap")}
+    pp = _section(raw1, path1, "plat")
+    L["page1"]["plat"] = {"dx": _num(pp, path1, "plat", "dx")}
 
     raw2, path2 = read("page2.json")
     hl = _section(raw2, path2, "headline")
@@ -255,6 +257,7 @@ def load_layout(layout_dir, overlay=None):
                   "fill": _color(ch, path3, "coach", colors, "fill"),
                   "mark": _color(ch, path3, "coach", colors, "mark"),
                   "mark_off": _color(ch, path3, "coach", colors, "mark_off"),
+                  "mark_dy": _num(ch, path3, "coach", "mark_dy"),
                   "default_coaches": _num(ch, path3, "coach",
                                           "default_coaches")},
         "letters": {"font": _font(lt, path3, "letters", fonts),
@@ -552,14 +555,15 @@ def run_matrix(args, L, get_board_data, layout_dir):
         if exp_txt:
             right_w += exp_w + exp["gap"]
         sub_x = max(1, width - right_w - 1)
+        plat_x = sub_x + L["page1"]["plat"]["dx"]
         if plat:
-            graphics.DrawText(offscreen, fnt, sub_x, y_base,
+            graphics.DrawText(offscreen, fnt, plat_x, y_base,
                               seg["platform"], plat_part)
         time_x = sub_x + plat_w + (exp_w + exp["gap"] if exp_txt else 0)
-        left_ink = sub_x
+        left_ink = min(sub_x, plat_x)
         if exp_txt:
             exp_x = sub_x + plat_w + exp["gap"] + exp["dx"]
-            left_ink = min(sub_x, exp_x)
+            left_ink = min(left_ink, exp_x)
             graphics.DrawText(offscreen, fnt, exp_x, y_base, sub_c, exp_txt)
         graphics.DrawText(offscreen, fnt, time_x, y_base, sub_c, time_txt)
         t_part = t + " "
@@ -673,8 +677,6 @@ def run_matrix(args, L, get_board_data, layout_dir):
         bw = P3["coach"]["width"]
         outline = C[P3["coach"]["outline"]]
         fill = C[P3["coach"]["fill"]]
-        mark = C[P3["coach"]["mark"]]
-        mark_off = C[P3["coach"]["mark_off"]]
         tfont = F["tiny"]
         x0 = margin
         y_top = y_head + P3["coach"]["dy"]
@@ -723,14 +725,22 @@ def run_matrix(args, L, get_board_data, layout_dir):
                 graphics.DrawLine(offscreen, x, yb, x1, yb, outline)
                 graphics.DrawLine(offscreen, x, y_top, x, yb, outline)
                 graphics.DrawLine(offscreen, x1, y_top, x1, yb, outline)
-            # class marker inside (mark on fill, mark_off off fill)
-            mcol = mark if fill_h >= bh // 2 else mark_off
+            # class markers sit mark_dy lower, amber with a black
+            # border so the capacity fill never muddies them
+            mdy = P3["coach"]["mark_dy"]
+            blot = C["mark"]
             if car["first"]:
-                tw = text_width(graphics, offscreen, tfont, mcol, "1ST")
-                graphics.DrawText(offscreen, tfont, cx - tw // 2,
-                                  y_top + bh // 2 + 2, mcol, "1ST")
+                tw = text_width(graphics, offscreen, tfont, outline, "1ST")
+                tx, ty = cx - tw // 2, y_top + bh // 2 + 2 + mdy
+                for ox, oy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    graphics.DrawText(offscreen, tfont, tx + ox, ty + oy,
+                                      blot, "1ST")
+                graphics.DrawText(offscreen, tfont, tx, ty, outline, "1ST")
             elif car["accessible"]:
-                draw_wheelchair(cx, y_top + 1, mcol)
+                it = y_top + 1 + mdy
+                for ox, oy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    draw_wheelchair(cx + ox, it + oy, blot)
+                draw_wheelchair(cx, it, outline)
 
         clock_s, clock_fnt, clock_x, clock_w = clock_geom()
         page_w = page_label_geom(page)[3]

@@ -26,5 +26,9 @@
     "_comment": "Flipped Exp status renders as two parts ( Exp | 10:25 ) in the row font. dx slides the Exp label (0 = snug left of the time), gap spaces label and time.",
     "dx": 0,
     "gap": 4
+  },
+  "plat": {
+    "_comment": "Platform number slides by dx like Exp (0 = snug).",
+    "dx": 0
   }
 }

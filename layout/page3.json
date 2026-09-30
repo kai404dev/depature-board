@@ -17,7 +17,8 @@
     "fill": "time",
     "mark": "mark",
     "mark_off": "text",
-    "default_coaches": 4
+    "default_coaches": 4,
+    "mark_dy": 2
   },
   "letters": {
     "font": "small",
