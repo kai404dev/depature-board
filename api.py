@@ -368,15 +368,81 @@ def car_capacity(c):
     return 0.10
 
 
+def _unit_counts(value, n):
+    """Parse a units field into a list of per-unit car counts.
+
+    Accepts [2, 2], [{"coaches": 2}, ...], [{"cars": [...]}, ...],
+    [[...], [...]] (list of car lists) or a plain int (even split).
+    Returns None when unusable; callers fall back to a single unit.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        if value < 2 or n < 2 or n % value != 0:
+            return None
+        return [n // value] * value
+    if not isinstance(value, (list, tuple)) or not value:
+        return None
+    if all(isinstance(v, (list, tuple)) for v in value):
+        counts = [len(v) for v in value]
+        if sum(counts) == n and all(c > 0 for c in counts):
+            return counts
+        return None
+    counts = []
+    for v in value:
+        if isinstance(v, bool):
+            return None
+        if isinstance(v, int):
+            counts.append(v)
+        elif isinstance(v, dict):
+            cars = v.get("cars")
+            if isinstance(cars, list):
+                counts.append(len(cars))
+                continue
+            for k in ("coaches", "count", "vehicles", "length", "cars_count",
+                      "numberOfVehicles", "number_of_vehicles"):
+                c = v.get(k)
+                if isinstance(c, int) and not isinstance(c, bool) and c > 0:
+                    counts.append(c)
+                    break
+            else:
+                return None
+        else:
+            return None
+    if not counts or any(c < 1 for c in counts) or sum(counts) != n:
+        return None
+    return counts
+
+
+def _apply_units(cars, counts):
+    """Mark the first car of each unit with unit_front=True."""
+    starts = set()
+    pos = 0
+    for c in counts:
+        starts.add(pos)
+        pos += c
+    for i, car in enumerate(cars):
+        car["unit_front"] = i in starts
+    return cars
+
+
 def formation_of(dep, default_cars=4):
     """Coach formation for the diagram page.
 
     Custom API bits (optional) per departure:
       "formation": {"cars": [{"first": true, "accessible": false,
                               "capacity": 0.35}, ...],
+                    "units": [2, 2],   # optional: cars per unit
                     "label": "4 coaches"}   # label optional
     or simply:
       "coaches": 4
+      "units": [2, 2]   # same shape, top level also accepted
+
+    Units may also be [{"coaches": 2}, ...], a list of car lists,
+    or per-car markers ({"unit": 1} id change / {"unit_front": true}).
+    Each unit's leading car is drawn with the slanted front.
 
     Car capacity defaults to 10% when absent (fraction or percent).
     Default: 4 cards, first class at the front (first card),
@@ -384,12 +450,39 @@ def formation_of(dep, default_cars=4):
     """
     f = dep.get("formation") or {}
     if isinstance(f, dict) and isinstance(f.get("cars"), list) and f["cars"]:
+        raw = [c for c in f["cars"] if isinstance(c, dict)]
         cars = [{"first": bool(c.get("first") or c.get("first_class")),
                  "accessible": bool(c.get("accessible")),
                  "capacity": car_capacity(c)}
-                for c in f["cars"] if isinstance(c, dict)]
+                for c in raw]
         if cars:
             n = len(cars)
+            explicit = [bool(c.get("unit_front") or c.get("new_unit")
+                             or c.get("front"))
+                        for c in raw]
+            if any(explicit):
+                explicit[0] = True
+                for i, car in enumerate(cars):
+                    car["unit_front"] = explicit[i]
+            else:
+                unit_ids = [c.get("unit", c.get("unit_id"))
+                            for c in raw]
+                if any(u is not None for u in unit_ids):
+                    fronts = set()
+                    last = object()
+                    for i, u in enumerate(unit_ids):
+                        if i == 0 or u != last:
+                            fronts.add(i)
+                        last = u
+                    for i, car in enumerate(cars):
+                        car["unit_front"] = i in fronts
+                else:
+                    counts = _unit_counts(f.get("units"), n)
+                    if counts is None:
+                        counts = _unit_counts(dep.get("units"), n)
+                    if counts is None:
+                        counts = [n]
+                    _apply_units(cars, counts)
             label = f.get("label") or f"{n} coach" + ("" if n == 1 else "es")
             return cars, label
     n = dep.get("coaches") if isinstance(dep.get("coaches"), int) else 0
@@ -397,4 +490,10 @@ def formation_of(dep, default_cars=4):
         n = default_cars
     cars = [{"first": i == 0, "accessible": i == n - 1,
              "capacity": car_capacity({})} for i in range(n)]
+    counts = _unit_counts(dep.get("units"), n)
+    if counts is None and isinstance(f, dict):
+        counts = _unit_counts(f.get("units"), n)
+    if counts is None:
+        counts = [n]
+    _apply_units(cars, counts)
     return cars, f"{n} coach" + ("" if n == 1 else "es")

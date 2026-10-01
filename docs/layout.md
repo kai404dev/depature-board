@@ -65,14 +65,18 @@ it, compact rows `rows.dy` below calling repeating every `rows.pitch`.
 - `header` — `{font, y, time_color, dest_color}` full-width headline.
 - `coach` — `{width, height, gap, margin, slant, dy, outline, fill,
   mark_dy, default_coaches}`. Cards are fixed `width` LEDs,
-  left-aligned from `margin`; first car gets a slanted front of
-  `slant` px; cards start `dy` below the header. Interiors fill to the
-  per-car load (`capacity`/`load`/`occupancy`, fraction or percent,
-  default 10%) in `fill`; class markers (`1ST`, wheelchair icon) draw
-  in amber with a black border, sitting `mark_dy` lower. API override
-  per departure:
+  left-aligned from `margin`; the leading car of each unit gets a
+  slanted front of `slant` px; cards start `dy` below the header.
+  Interiors fill to the per-car load (`capacity`/`load`/`occupancy`,
+  fraction or percent, default 10%) in `fill`; class markers (`1ST`,
+  wheelchair icon) draw in amber with a black border, sitting
+  `mark_dy` lower. API override per departure:
   `"formation": {"cars": [{"first": true, "accessible": false,
-  "capacity": 0.35}, ...]}` or `"coaches": N`.
+  "capacity": 0.35}, ...], "units": [2, 2]}` or `"coaches": N`.
+  `units` (also accepted top-level) is cars-per-unit (`[2, 2]`,
+  `[{"coaches": 2}, ...]`, or a list of car lists); per-car
+  `{"unit": id}` changes / `{"unit_front": true}` work too. RTT
+  KnowYourTrain groups map to units automatically.
 - `letters` — `{font, color, dy}` below the card bottoms: carriage
   letters A,B,C… centred per car (capitals never descend, so the last
   row is safe).

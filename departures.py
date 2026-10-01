@@ -766,8 +766,8 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         draw_page_chrome(page, frac)
 
     def draw_page3(dep, page, frac):
-        """Train formation diagram: fixed-width coach cards, pointy front
-        car, 1ST/wheelchair markers inside, letters underneath."""
+        """Train formation diagram: fixed-width coach cards, slanted front
+        per unit, 1ST/wheelchair markers inside, letters underneath."""
         P3 = L["page3"]
         hfont = F[P3["header"]["font"]]
         sfont = F[P3["letters"]["font"]]
@@ -820,14 +820,15 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         for i, car in enumerate(cars):
             x = x0 + i * (bw + gap_b)
             x1 = x + bw - 1
-            cx = x + bw // 2 + (slant // 2 if i == 0 else 0)
+            is_front = car.get("unit_front", i == 0)
+            cx = x + bw // 2 + (slant // 2 if is_front else 0)
             # capacity fill from the bottom (min 1px when loaded)
             fill_h = int((bh - 2) * car["capacity"])
             if car["capacity"] > 0 and fill_h < 1:
                 fill_h = 1
             if fill_h > 0:
                 for yy in range(max(y_top + 1, yb - fill_h), yb):
-                    if i == 0:
+                    if is_front:
                         # NB: must not be called 'frac' -- that is the
                         # progress-bar argument used by draw_page_chrome
                         row_frac = (yy - y_top) / max(1, bh - 1)
@@ -837,7 +838,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                     for xx in range(xs, x1):
                         offscreen.SetPixel(xx, yy, fill.red,
                                            fill.green, fill.blue)
-            if i == 0:
+            if is_front:
                 graphics.DrawLine(offscreen, x, yb, x1, yb, outline)
                 graphics.DrawLine(offscreen, x1, y_top, x1, yb, outline)
                 graphics.DrawLine(offscreen, x + slant, y_top, x1, y_top,
@@ -1309,6 +1310,8 @@ def main():
                 letter = "ABCDEFGH"[i] if i < 8 else str(i + 1)
                 tag = ("1ST " if c["first"] else "") + \
                       ("WCHR " if c["accessible"] else "")
+                if c.get("unit_front", i == 0) and i > 0:
+                    cells.append("|")
                 cells.append(f"{letter}[{tag}{c['capacity']:.0%}]")
             print("FRONT>" + "".join(cells))
         if not args.once:

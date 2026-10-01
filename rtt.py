@@ -1135,9 +1135,14 @@ def _to_departure(svc, now, station=None):
 # ---------------------------------------------------------------------------
 
 def _cars_from_alloc(a):
-    """Coach list from a NetworkRailAllocation."""
+    """Coach list from a NetworkRailAllocation.
 
-    cars = []
+    Each non-empty KnowYourTrain group (one unit) marks its leading
+    car with unit_front=True so the diagram can slant each unit.
+    Falls back to allocationItems UNIT sizes when KYT has no groups.
+    """
+
+    unit_groups = []
 
     kyt = (
         a.get("knowYourTrainData")
@@ -1148,6 +1153,8 @@ def _cars_from_alloc(a):
         kyt.get("data")
         or []
     ):
+        group = []
+
         for v in (
             g.get("vehicles")
             or []
@@ -1170,7 +1177,7 @@ def _cars_from_alloc(a):
                 )
             }
 
-            cars.append({
+            group.append({
                 "first": (
                     "first" in fac
                 ),
@@ -1179,7 +1186,10 @@ def _cars_from_alloc(a):
                 ),
             })
 
-    if not cars:
+        if group:
+            unit_groups.append(group)
+
+    if not unit_groups:
         n = a.get(
             "passengerVehicles"
         )
@@ -1188,12 +1198,39 @@ def _cars_from_alloc(a):
             isinstance(n, int)
             and n > 0
         ):
-            cars = _plain_formation(
-                n
-            )["cars"]
+            counts = []
+            for it in (
+                a.get("allocationItems")
+                or []
+            ):
+                c = it.get("numberOfVehicles")
+                if (
+                    isinstance(c, int)
+                    and c > 0
+                ):
+                    counts.append(c)
+            if len(counts) > 1 and sum(counts) == n:
+                unit_groups = [
+                    _plain_formation(c)["cars"]
+                    for c in counts
+                ]
+            else:
+                unit_groups = [
+                    _plain_formation(n)["cars"]
+                ]
 
     if REVERSE_FORMATION:
-        cars.reverse()
+        unit_groups = [
+            list(reversed(g))
+            for g in reversed(unit_groups)
+        ]
+
+    cars = []
+
+    for group in unit_groups:
+        for i, car in enumerate(group):
+            car["unit_front"] = (i == 0)
+            cars.append(car)
 
     return cars
 
