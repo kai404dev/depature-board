@@ -581,10 +581,11 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         graphics.DrawText(offscreen, fnt, x, y, C["mark"], lab)
 
     def draw_row(dep, fnt, seg, y_base, clock_x=None, right_extra=0,
-                 plat_dx=0):
+                 plat_dx=0, prefix=""):
         """Service row: time + platform + destination + status, all in
         the row font. A flipped Exp renders as two parts -- the Exp
-        label slides by layout exp.dx, the time stays put."""
+        label slides by layout exp.dx, the time stays put. prefix (e.g.
+        '2: ') labels the compact next-service rows by position."""
         t, dest, status, raw = format_departure(dep)
         status = live_status(raw, args.flip_seconds)
         _, sub_c = status_colors(raw)
@@ -616,7 +617,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             left_ink = min(left_ink, exp_x)
             graphics.DrawText(offscreen, fnt, exp_x, y_base, sub_c, exp_txt)
         graphics.DrawText(offscreen, fnt, time_x, y_base, sub_c, time_txt)
-        t_part = t + " "
+        t_part = prefix + t + " "
         w_time = graphics.DrawText(offscreen, fnt, 1, y_base,
                                    seg["time"], t_part)
         max_dest = left_ink - w_time - 2
@@ -916,7 +917,8 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         slot = rows[1:]
         clock_drawn = False
         if slot:
-            dep = slot[int(time.time() // args.rotate_seconds) % len(slot)]
+            k = int(time.time() // args.rotate_seconds) % len(slot)
+            dep = slot[k]
             yy = y
             if yy >= height:
                 if time.time() - getattr(draw_static, "_warned", 0) > 60:
@@ -931,7 +933,8 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 draw_row(dep, rfont, seg, yy,
                          clock_x=clock_x if share else None,
                          right_extra=page_w + 2,
-                         plat_dx=L["page1"]["rows"]["plat_dx"])
+                         plat_dx=L["page1"]["rows"]["plat_dx"],
+                         prefix=f"{k + 2}: ")
                 # clock pinned to the bottom (shares the row on 32px)
                 graphics.DrawText(offscreen, clock_fnt, clock_x,
                                   yy if share else resolve_y(
