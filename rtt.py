@@ -1,3 +1,4 @@
+```python
 #!/usr/bin/env python3
 """Realtime Trains (next-generation API) data layer for the departures board.
 
@@ -28,6 +29,7 @@ from datetime import datetime, timezone
 
 try:
     from zoneinfo import ZoneInfo
+
     LONDON = ZoneInfo("Europe/London")
 except Exception:
     LONDON = None
@@ -41,14 +43,12 @@ RTT_BASE = "https://data.rtt.io"
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 TOKEN_FILE = os.path.join(THIS_DIR, "rtt_token.txt")
 
-# Set True while diagnosing the departure board.
 DEBUG = True
 
-# Flip if the coach diagram on page 3 comes out back to front.
 REVERSE_FORMATION = False
 
-# Rail replacement buses: headcode 0B00 (and any bus-mode service).
 HIDE_HEADCODES = {"0B00"}
+
 HIDE_MODES = {
     "BUS",
     "SCHEDULED_BUS",
@@ -67,8 +67,6 @@ STATUS_TEXT = {
 SERVICE_TTL = 90
 FAIL_TTL = 120
 
-# How long a service can remain after its expected departure if RTT has
-# not reported an actual departure.
 STALE_SERVICE_GRACE = 120
 
 _S = {
@@ -80,7 +78,6 @@ _S = {
     "window_ok": True,
     "svc_cache": {},
 }
-
 
 TOKEN_KEYS = ("RTT_TOKEN", "RTT_API_KEY")
 
@@ -107,20 +104,23 @@ def _debug(message):
 
 def _debug_service(svc, prefix="SERVICE"):
     """Print a compact summary of an RTT service."""
+
     tdat = svc.get("temporalData") or {}
-    dep = tdat.get("departure") or {}
+
+    display_as = tdat.get("displayAs")
+
+    # PASS services use temporalData.pass rather than
+    # temporalData.departure.
+    if display_as == "PASS":
+        dep = tdat.get("pass") or {}
+    else:
+        dep = tdat.get("departure") or {}
+
     meta = svc.get("scheduleMetadata") or {}
     lmeta = svc.get("locationMetadata") or {}
 
-    identity = (
-        meta.get("identity")
-        or "?"
-    )
-
-    headcode = (
-        meta.get("trainReportingIdentity")
-        or "?"
-    )
+    identity = meta.get("identity") or "?"
+    headcode = meta.get("trainReportingIdentity") or "?"
 
     origin = [
         (x.get("location") or {}).get("description")
@@ -138,16 +138,16 @@ def _debug_service(svc, prefix="SERVICE"):
         f"headcode={headcode} "
         f"origin={origin} "
         f"destination={destination} "
-        f"scheduled={dep.get('scheduleAdvertised') or dep.get('scheduleInternal')} "
+        f"scheduled="
+        f"{dep.get('scheduleAdvertised') or dep.get('scheduleInternal')} "
         f"forecast={dep.get('realtimeForecast')} "
         f"estimate={dep.get('realtimeEstimate')} "
         f"actual={dep.get('realtimeActual')} "
         f"cancelled={dep.get('isCancelled')} "
-        f"displayAs={tdat.get('displayAs')} "
+        f"displayAs={display_as} "
         f"callType={tdat.get('realtimeCallType')} "
         f"status={tdat.get('status')} "
-        f"platform="
-        f"{lmeta.get('platform')}"
+        f"platform={lmeta.get('platform')}"
     )
 
 
@@ -157,6 +157,7 @@ def _debug_service(svc, prefix="SERVICE"):
 
 def _read_dotenv(path):
     """Tiny .env parser: KEY=value, optional 'export ', quotes, # comments."""
+
     out = {}
 
     try:
@@ -164,7 +165,11 @@ def _read_dotenv(path):
             for line in f:
                 line = line.strip()
 
-                if not line or line.startswith("#") or "=" not in line:
+                if (
+                    not line
+                    or line.startswith("#")
+                    or "=" not in line
+                ):
                     continue
 
                 if line.startswith("export "):
@@ -190,9 +195,12 @@ def _read_dotenv(path):
 
 def load_token():
     """Token from environment, .env, then rtt_token.txt."""
+
     for k in TOKEN_KEYS:
         if os.environ.get(k, "").strip():
-            _debug(f"Using RTT token from environment variable {k}")
+            _debug(
+                f"Using RTT token from environment variable {k}"
+            )
             return os.environ[k].strip()
 
     env = _read_dotenv(
@@ -201,11 +209,16 @@ def load_token():
 
     for k in TOKEN_KEYS:
         if env.get(k, "").strip():
-            _debug(f"Using RTT token from .env key {k}")
+            _debug(
+                f"Using RTT token from .env key {k}"
+            )
             return env[k].strip()
 
     if os.path.exists(TOKEN_FILE):
-        _debug(f"Using RTT token from {TOKEN_FILE}")
+        _debug(
+            f"Using RTT token from {TOKEN_FILE}"
+        )
+
         with open(TOKEN_FILE) as f:
             return f.read().strip()
 
@@ -247,7 +260,6 @@ def _request(path, params=None, bearer="", timeout=10):
     if params:
         url += "?" + urllib.parse.urlencode(params)
 
-    # Do not log the bearer token.
     _debug(
         f"GET {path} "
         f"params={params}"
@@ -325,6 +337,7 @@ def _request(path, params=None, bearer="", timeout=10):
 
 def _parse_dt(value):
     """Parse an RTT ISO-8601 timestamp into an aware datetime."""
+
     if not value or not isinstance(value, str):
         return None
 
@@ -333,6 +346,8 @@ def _parse_dt(value):
             value.replace("Z", "+00:00")
         )
 
+        # RTT's railway timetable timestamps without an offset are
+        # UK local time, not UTC.
         if dt.tzinfo is None:
             dt = dt.replace(
                 tzinfo=(
@@ -349,6 +364,7 @@ def _parse_dt(value):
 
 def _timestamp(value):
     """Return an RTT timestamp as Unix seconds, or None."""
+
     dt = _parse_dt(value)
 
     if dt is None:
@@ -359,6 +375,7 @@ def _timestamp(value):
 
 def _hhmm(value):
     """ISO datetime -> HH:MM in UK local time."""
+
     dt = _parse_dt(value)
 
     if dt is None:
@@ -389,7 +406,9 @@ def _bearer():
     ):
         return _S["access"]
 
-    _debug("Requesting RTT access token")
+    _debug(
+        "Requesting RTT access token"
+    )
 
     try:
         data = _request(
@@ -485,6 +504,7 @@ def _get(path, params=None):
 
 def _plain_formation(n):
     """n coaches, no class/accessibility markers."""
+
     return {
         "cars": [
             {
@@ -522,8 +542,7 @@ def _departure_times(dep):
     )
 
     expected = (
-        actual
-        or forecast
+        forecast
         or scheduled
     )
 
@@ -533,8 +552,12 @@ def _departure_times(dep):
         actual,
     )
 
+
 def _find_station_location(svc, station):
     """Find the RTT location entry for the requested station."""
+
+    if not station:
+        return None
 
     locations = svc.get("locations") or []
 
@@ -544,37 +567,44 @@ def _find_station_location(svc, station):
         short_codes = loc.get("shortCodes") or []
         long_codes = loc.get("longCodes") or []
 
-        if station in short_codes or station in long_codes:
+        if (
+            station in short_codes
+            or station in long_codes
+            or loc.get("crs") == station
+        ):
             return location
 
     return None
 
+
 def _to_departure(svc, now, station=None):
-    """Convert one RTT location service into a board departure."""
+    """Convert one RTT service into a board departure."""
 
     tdat = svc.get("temporalData") or {}
 
-    display_as = tdat.get("displayAs")
-    is_passing = display_as == "PASS"
-    
+    display = tdat.get("displayAs")
+
+    is_passing = display == "PASS"
+
+    # THIS IS THE IMPORTANT PART:
+    #
+    # Normal services:
+    #     temporalData.departure
+    #
+    # Passing services:
+    #     temporalData.pass
+    #
+    # Do not overwrite this later with temporalData.departure.
     if is_passing:
         dep = tdat.get("pass") or {}
     else:
         dep = tdat.get("departure") or {}
-  
-    dep = tdat.get("departure") or {}
+
     meta = svc.get("scheduleMetadata") or {}
     lmeta = svc.get("locationMetadata") or {}
 
-    identity = (
-        meta.get("identity")
-        or "?"
-    )
-
-    headcode = (
-        meta.get("trainReportingIdentity")
-        or "?"
-    )
+    identity = meta.get("identity") or "?"
+    headcode = meta.get("trainReportingIdentity") or "?"
 
     if DEBUG:
         _debug_service(
@@ -585,10 +615,19 @@ def _to_departure(svc, now, station=None):
     # ---------------------------------------------------------------
     # Basic service filtering
     # ---------------------------------------------------------------
-    display_as = tdat.get("displayAs")
 
-    if meta.get("inPassengerService") is False and display_as != "PASS":
-        _debug(f"REJECT {identity}/{headcode}: not in passenger service")
+    # PASS services are deliberately allowed even when RTT says
+    # inPassengerService=False. A passing movement can legitimately
+    # be non-passenger while still being something the board should
+    # display.
+    if (
+        meta.get("inPassengerService") is False
+        and not is_passing
+    ):
+        _debug(
+            f"REJECT {identity}/{headcode}: "
+            "not in passenger service"
+        )
         return None
 
     if (
@@ -599,17 +638,10 @@ def _to_departure(svc, now, station=None):
     ):
         _debug(
             f"REJECT {identity}/{headcode}: "
-            f"hidden mode/headcode "
+            "hidden mode/headcode "
             f"mode={meta.get('modeType')}"
         )
         return None
-
-    display = tdat.get("displayAs")
-
-    # PASS is a valid railway movement. Its timing information is
-    # normally attached to the station's location rather than the
-    # service-level departure object.
-    is_passing = display == "PASS"
 
     if display not in (
         "CALL",
@@ -635,7 +667,7 @@ def _to_departure(svc, now, station=None):
         return None
 
     # ---------------------------------------------------------------
-    # Find the actual station location
+    # Find actual station location
     # ---------------------------------------------------------------
 
     station_location = None
@@ -646,8 +678,14 @@ def _to_departure(svc, now, station=None):
             station,
         )
 
-    # PASS services normally have their timing data here.
-    if is_passing and station_location:
+    # For PASS services, RTT may additionally provide station-specific
+    # timing information in locations[].temporalData.
+    #
+    # Use that if present, but temporalData.pass remains the primary
+    # fallback because the location response can omit locations.
+    station_tdat = {}
+
+    if station_location:
         station_tdat = (
             station_location.get(
                 "temporalData"
@@ -655,6 +693,7 @@ def _to_departure(svc, now, station=None):
             or {}
         )
 
+    if is_passing and station_location:
         station_dep = (
             station_tdat.get("departure")
             or {}
@@ -665,16 +704,16 @@ def _to_departure(svc, now, station=None):
             or {}
         )
 
-        # Prefer departure, then arrival.
         if station_dep:
             dep = station_dep
+
         elif station_arr:
             dep = station_arr
 
         _debug(
             f"PASS LOCATION {identity}/{headcode}: "
-            f"departure={station_tdat.get('departure')} "
-            f"arrival={station_tdat.get('arrival')}"
+            f"departure={station_dep or None} "
+            f"arrival={station_arr or None}"
         )
 
     # ---------------------------------------------------------------
@@ -688,7 +727,7 @@ def _to_departure(svc, now, station=None):
 
     sched = _parse_dt(sched_s)
 
-    if not sched:
+    if sched is None:
         _debug(
             f"REJECT {identity}/{headcode}: "
             f"invalid scheduled departure={sched_s!r}"
@@ -725,27 +764,35 @@ def _to_departure(svc, now, station=None):
 
     now_dt = datetime.fromtimestamp(
         now,
-        tz=timezone.utc,
+        tz=(
+            LONDON
+            or timezone.utc
+        ),
     )
 
     scheduled_dt = datetime.fromtimestamp(
         scheduled_ts,
-        tz=timezone.utc,
+        tz=(
+            LONDON
+            or timezone.utc
+        ),
     )
 
-    expected_dt = (
-        datetime.fromtimestamp(
-            expected_ts,
-            tz=timezone.utc,
-        )
-        if expected_ts is not None
-        else None
+    expected_dt = datetime.fromtimestamp(
+        expected_ts,
+        tz=(
+            LONDON
+            or timezone.utc
+        ),
     )
 
     actual_dt = (
         datetime.fromtimestamp(
             actual_ts,
-            tz=timezone.utc,
+            tz=(
+                LONDON
+                or timezone.utc
+            ),
         )
         if actual_ts is not None
         else None
@@ -756,8 +803,7 @@ def _to_departure(svc, now, station=None):
         f"passing={is_passing} "
         f"now={now_dt.isoformat()} "
         f"scheduled={scheduled_dt.isoformat()} "
-        f"expected="
-        f"{expected_dt.isoformat() if expected_dt else None} "
+        f"expected={expected_dt.isoformat()} "
         f"actual="
         f"{actual_dt.isoformat() if actual_dt else None}"
     )
@@ -846,9 +892,7 @@ def _to_departure(svc, now, station=None):
             )
 
         elif isinstance(
-            dep.get(
-                "realtimeAdvertisedLateness"
-            ),
+            dep.get("realtimeAdvertisedLateness"),
             (int, float),
         ):
             mins = int(
@@ -903,7 +947,6 @@ def _to_departure(svc, now, station=None):
 
     pm = lmeta.get("platform") or {}
 
-    # PASS may have platform data on the station location.
     if station_location:
         station_lmeta = (
             station_location.get(
@@ -956,15 +999,42 @@ def _to_departure(svc, now, station=None):
     # Departure object
     # ---------------------------------------------------------------
 
+    station_status = (
+        station_tdat.get("status")
+        if is_passing and station_location
+        else None
+    )
+
+    loc_status = (
+        station_status
+        or tdat.get("status")
+    )
+
+    station_alloc_index = None
+
+    if station_location:
+        station_alloc_index = (
+            station_location.get(
+                "locationMetadata"
+            )
+            or {}
+        ).get(
+            "allocationIndex"
+        )
+
     d = {
         "scheduled_time": _hhmm(sched_s),
         "planned_time": _hhmm(sched_s),
+
         "destination_name": dest,
         "platform": platform,
 
         "is_cancelled": cancelled,
         "is_delayed": delayed,
         "is_tbc": False,
+
+        # This is what departures.py can use to identify
+        # passing services.
         "is_passing": is_passing,
 
         "delay_minutes": mins,
@@ -1005,27 +1075,15 @@ def _to_departure(svc, now, station=None):
 
         "note_lines": [],
 
-        "_loc_status": (
-            station_tdat.get("status")
-            if is_passing and station_location
-            else tdat.get("status")
-        ),
+        "_loc_status": loc_status,
 
         "_plat_planned": pm.get(
             "planned"
         ),
 
         "_alloc_index": (
-            (
-                station_location.get(
-                    "locationMetadata"
-                )
-                or {}
-            ).get(
-                "allocationIndex"
-            )
-            if is_passing and station_location
-            else lmeta.get(
+            station_alloc_index
+            or lmeta.get(
                 "allocationIndex"
             )
         ),
@@ -1040,9 +1098,7 @@ def _to_departure(svc, now, station=None):
     )
 
     if isinstance(nv, int) and nv > 0:
-        d["formation"] = (
-            _plain_formation(nv)
-        )
+        d["formation"] = _plain_formation(nv)
 
     d["note_lines"] = _notes(d)
 
@@ -1079,6 +1135,7 @@ def _to_departure(svc, now, station=None):
 
 def _cars_from_alloc(a):
     """Coach list from a NetworkRailAllocation."""
+
     cars = []
 
     kyt = (
@@ -1191,11 +1248,18 @@ def _notes(d):
     out = []
 
     if preds:
-        out.append(
-            "This train "
-            + " and ".join(preds)
-            + "."
-        )
+        if d.get("is_passing"):
+            out.append(
+                "This train passes the station "
+                + " and ".join(preds)
+                + "."
+            )
+        else:
+            out.append(
+                "This train "
+                + " and ".join(preds)
+                + "."
+            )
 
     if d.get("is_delayed"):
         line = (
@@ -1329,6 +1393,7 @@ def _apply_service(d, svc, station):
                 )
                 or []
             )
+            or loc.get("crs") == station
         ):
             idx = i
             break
@@ -1364,8 +1429,7 @@ def _apply_service(d, svc, station):
                 "scheduleMetadata"
             )
             or {}
-        ).get("operator")
-        or {}
+        ).get("operator") or {}
     ).get(
         "name"
     ) or d.get("operator")
@@ -1434,7 +1498,9 @@ def _apply_service(d, svc, station):
 
     d["note_lines"] = _notes(d)
 
-    formation_cars = (d.get("formation") or {}).get("cars") or []
+    formation_cars = (
+        d.get("formation") or {}
+    ).get("cars") or []
 
     _debug(
         f"ENRICH {d.get('rtt_identity')}/"
@@ -1479,8 +1545,6 @@ def fetch_departures(
             "/gb-nr/location",
             params,
         )
-
-        print(data)
 
     except urllib.error.HTTPError as e:
         if (
@@ -1574,7 +1638,9 @@ def fetch_departures(
         departures,
         start=1,
     ):
-        expected_hhmm = _hhmm_from_timestamp(d.get("_expected_ts"))
+        expected_hhmm = _hhmm_from_timestamp(
+            d.get("_expected_ts")
+        )
 
         _debug(
             f"RESULT {index}: "
@@ -1584,6 +1650,7 @@ def fetch_departures(
             f"platform={d.get('platform')} "
             f"delay={d.get('delay_minutes')} "
             f"cancelled={d.get('is_cancelled')} "
+            f"passing={d.get('is_passing')} "
             f"expected={expected_hhmm}"
         )
 
@@ -1591,7 +1658,8 @@ def fetch_departures(
 
 
 def _hhmm_from_timestamp(ts):
-    """Unix timestamp -> local HH:MM for debug output."""
+    """Unix timestamp -> local HH:MM:SS for debug output."""
+
     if ts is None:
         return None
 
@@ -1647,13 +1715,9 @@ def enrich(
             )
             continue
 
-        key = (
-            f"{ident}:{date}"
-        )
+        key = f"{ident}:{date}"
 
-        hit = cache.get(
-            key
-        )
+        hit = cache.get(key)
 
         ttl = (
             SERVICE_TTL
@@ -1728,8 +1792,7 @@ def enrich(
             if len(cache) > 40:
                 oldest = min(
                     cache,
-                    key=lambda k:
-                    cache[k][0],
+                    key=lambda k: cache[k][0],
                 )
 
                 del cache[oldest]
@@ -1770,3 +1833,4 @@ def get_departures(
     )
 
     return result
+```
