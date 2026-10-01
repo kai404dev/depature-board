@@ -553,6 +553,15 @@ def _to_departure(svc, now, station=None):
     """Convert one RTT location service into a board departure."""
 
     tdat = svc.get("temporalData") or {}
+
+    display_as = tdat.get("displayAs")
+    is_passing = display_as == "PASS"
+    
+    if is_passing:
+        dep = tdat.get("pass") or {}
+    else:
+        dep = tdat.get("departure") or {}
+  
     dep = tdat.get("departure") or {}
     meta = svc.get("scheduleMetadata") or {}
     lmeta = svc.get("locationMetadata") or {}
