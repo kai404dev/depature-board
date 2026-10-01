@@ -393,6 +393,29 @@ def fit_text(graphics, canvas, font, color, text, max_w):
     return text
 
 
+SCROLL_PAUSE0 = 2.5  # sit at the start before scrolling
+SCROLL_PAUSE1 = 2.0  # sit at the end (last char visible) before snapping back
+SCROLL_SPEED = 20.0  # px per second while scrolling
+
+
+def scroll_timeline(tw, max_x, x0, t):
+    """(offset, cycle) for scrolling text of width tw in cell [x0..max_x].
+
+    Static (offset 0, cycle 0.0) when it fits. Otherwise: sit at the
+    start, scroll until the final character is just visible, sit at the
+    end, then snap back to the start -- no looping.
+    """
+    if tw <= max_x - x0:
+        return 0, 0.0
+    span = x0 + tw - max_x
+    cycle = SCROLL_PAUSE0 + span / SCROLL_SPEED + SCROLL_PAUSE1
+    if t < SCROLL_PAUSE0:
+        return 0, cycle
+    if t < SCROLL_PAUSE0 + span / SCROLL_SPEED:
+        return int((t - SCROLL_PAUSE0) * SCROLL_SPEED), cycle
+    return span, cycle
+
+
 def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 
@@ -607,34 +630,38 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             right_w += exp_w + exp["gap"]
         sub_x = max(1, width - right_w - 1)
         plat_x = sub_x + plat_dx
-        if plat:
-            graphics.DrawText(offscreen, fnt, plat_x, y_base,
-                              seg["platform"], plat_part)
         time_x = sub_x + plat_w + (exp_w + exp["gap"] if exp_txt else 0)
         left_ink = min(sub_x, plat_x)
         if exp_txt:
             exp_x = sub_x + plat_w + exp["gap"] + exp["dx"]
             left_ink = min(left_ink, exp_x)
+        t_part = prefix + t + " "
+        w_time = text_width(graphics, offscreen, fnt, seg["time"], t_part)
+        # Destination scrolls inside its cell when too long. It is drawn
+        # first so its edge blanking cannot erase the time / status ink,
+        # which is painted fresh afterwards on the same band.
+        max_x = left_ink - 1
+        if clock_x is not None:
+            max_x = min(max_x, clock_x - 2)
+        draw_scroll(fnt, seg["destination"], dest, y_base, max_x,
+                    x0=1 + w_time)
+        graphics.DrawText(offscreen, fnt, 1, y_base, seg["time"], t_part)
+        if plat:
+            graphics.DrawText(offscreen, fnt, plat_x, y_base,
+                              seg["platform"], plat_part)
+        if exp_txt:
             graphics.DrawText(offscreen, fnt, exp_x, y_base, sub_c, exp_txt)
         graphics.DrawText(offscreen, fnt, time_x, y_base, sub_c, time_txt)
-        t_part = prefix + t + " "
-        w_time = graphics.DrawText(offscreen, fnt, 1, y_base,
-                                   seg["time"], t_part)
-        max_dest = left_ink - w_time - 2
-        if clock_x is not None:
-            max_dest = min(max_dest, clock_x - w_time - 3)
-        dest = fit_text(graphics, offscreen, fnt, seg["destination"], dest,
-                        max(0, max_dest))
-        graphics.DrawText(offscreen, fnt, 1 + w_time, y_base,
-                          seg["destination"], dest)
 
     scroll_w = {}
 
-    def draw_scroll(fnt, col, text, y_base, max_x, xspec="left"):
-        """Static if it fits within max_x, otherwise pause then loop-scroll
-        left. The page waits (scroll_need) until one full pass is done.
-        Anything right of max_x on the text row is blanked, so draw
-        whatever shares the row (clock, page number) AFTER calling this."""
+    def draw_scroll(fnt, col, text, y_base, max_x, xspec="left", x0=1):
+        """Static if it fits the cell [x0..max_x], otherwise pause, scroll
+        left until the final character is just visible, sit 2s, then snap
+        back to the start (no loop). The page waits (scroll_need) until
+        one full pass is done. Anything outside the cell on the text row
+        is blanked, so draw whatever shares the row (time, status,
+        clock, page number) AFTER calling this."""
         nonlocal scroll_need
         key = (id(fnt), text)
         tw = scroll_w.get(key)
@@ -643,23 +670,21 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 scroll_w.clear()
             tw = scroll_w[key] = text_width(graphics, offscreen, fnt,
                                             col, text)
-        if tw <= max_x - 1:
-            graphics.DrawText(offscreen, fnt, resolve_x(xspec, tw, width),
-                              y_base, col, text)
+        if tw <= max_x - x0:
+            x = x0 if x0 > 1 else resolve_x(xspec, tw, width)
+            graphics.DrawText(offscreen, fnt, x, y_base, col, text)
             return
-        gap, pause, speed = 48, 2.5, 20.0   # px, seconds, px/second
-        period = tw + gap
-        cycle = pause + period / speed
+        _, cycle = scroll_timeline(tw, max_x, x0, 0.0)
         scroll_need = max(scroll_need, cycle)
         t = (time.time() - page_since) % cycle
-        off = 0 if (t < pause or preview_frac is not None) \
-            else int((t - pause) * speed)
-        graphics.DrawText(offscreen, fnt, 1 - off, y_base, col, text)
-        graphics.DrawText(offscreen, fnt, 1 - off + period, y_base, col,
-                          text)
+        off, _ = scroll_timeline(tw, max_x, x0, t)
+        if preview_frac is not None:
+            off = 0
+        graphics.DrawText(offscreen, fnt, x0 - off, y_base, col, text)
         top = y_base - fnt.baseline
         for yy in range(max(0, top), min(height, top + fnt.height)):
-            offscreen.SetPixel(0, yy, 0, 0, 0)
+            for xx in range(0, min(x0, width)):
+                offscreen.SetPixel(xx, yy, 0, 0, 0)
             for xx in range(max(0, max_x + 1), width):
                 offscreen.SetPixel(xx, yy, 0, 0, 0)
 
@@ -691,14 +716,15 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
 
         y_big = P2["headline"]["y"]
         t_part = t + " "
-        w_time = graphics.DrawText(offscreen, bfont, 1, y_big,
-                                   C[P2["headline"]["time_color"]], t_part)
-        dest = fit_text(graphics, offscreen, bfont,
-                        C[P2["headline"]["dest_color"]], dest,
-                        width - w_time - 1)
-        graphics.DrawText(offscreen, bfont, 1 + w_time,
-                          y_big + P2["headline"]["dest_dy"],
-                          C[P2["headline"]["dest_color"]], dest)
+        w_time = text_width(graphics, offscreen, bfont,
+                            C[P2["headline"]["time_color"]], t_part)
+        # Destination scrolls when too long; drawn before the time so
+        # its edge blanking cannot erase the time ink.
+        draw_scroll(bfont, C[P2["headline"]["dest_color"]], dest,
+                    y_big + P2["headline"]["dest_dy"], width - 1,
+                    x0=1 + w_time)
+        graphics.DrawText(offscreen, bfont, 1, y_big,
+                          C[P2["headline"]["time_color"]], t_part)
 
         status = live_status(raw, args.flip_seconds)
         line2 = status
@@ -741,16 +767,16 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             dep, default_cars=P3["coach"]["default_coaches"])
         n = len(cars)
 
-        # header in the main font, full width
+        # header in the main font, full width (destination scrolls
+        # when too long; drawn before the time to protect its ink)
         y_head = P3["header"]["y"]
         t_part = t + " "
-        w_time = graphics.DrawText(offscreen, hfont, 1, y_head,
-                                   C[P3["header"]["time_color"]], t_part)
-        graphics.DrawText(offscreen, hfont, 1 + w_time, y_head,
-                          C[P3["header"]["dest_color"]],
-                          fit_text(graphics, offscreen, hfont,
-                                   C[P3["header"]["dest_color"]], dest,
-                                   width - w_time - 1))
+        w_time = text_width(graphics, offscreen, hfont,
+                            C[P3["header"]["time_color"]], t_part)
+        draw_scroll(hfont, C[P3["header"]["dest_color"]], dest,
+                    y_head, width - 1, x0=1 + w_time)
+        graphics.DrawText(offscreen, hfont, 1, y_head,
+                          C[P3["header"]["time_color"]], t_part)
 
         # coach cards row (cards shrink to fit real formations --
         # Darwin reports 9/11-car sets, which never fit full width)

@@ -142,10 +142,16 @@ class Recorder:
             self.grid.setdefault((x, y), set()).add((oid, struct))
 
     def spixel(self, x, y, r, g, b):
-        """Exact painted pixel (fills): true colour + structural tag."""
+        """Exact painted pixel (fills): true colour + structural tag.
+
+        Replaces any tags underneath: paint covers, so covered ink can
+        never count as a text-vs-text collision (e.g. scroll blanking
+        wiping overspill, fills layering under glyphs, the warning
+        border drawn last). Glyph ink re-tags itself when drawn after.
+        """
         if 0 <= x < self.width and 0 <= y < self.height:
             self.paint[(x, y)] = (r, g, b)
-            self.grid.setdefault((x, y), set()).add((self._cur[0], True))
+            self.grid[(x, y)] = {(self._cur[0], True)}
 
     def line(self, x0, y0, x1, y1, color=None):
         oid = self._next_id()
