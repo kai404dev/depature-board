@@ -48,8 +48,8 @@ import tempfile
 
 FONTS = {
     "route": "10x20.bdf",  # pixel-doubled at load -> fills panel height
-    "dest": "9x18B.bdf",   # destination, top half of remaining space
-    "via": "7x14B.bdf",    # via points, bottom half of remaining space
+    "dest": "10x20.bdf",   # destination, pinned to the top
+    "via": "6x13B.bdf",    # via points, smaller, bottom half
 }
 AMBER = (255, 140, 0)  # bus blinds are monochrome amber
 COLORS = {
@@ -284,11 +284,12 @@ def run_board(args, services):
     print(f"bus board {W}x{H} services={len(services)}",
           file=sys.stderr, flush=True)
 
-    # Vertical geometry: route fills bottom-to-top, dest sits in the
-    # top half, via in the bottom half (overridable for other heights).
+    # Vertical geometry: route fills bottom-to-top (centred by
+    # spanning the full height), dest pinned to the top, via centred
+    # in the bottom half (all overridable for other panel heights).
     route_y = args.main_y if args.main_y is not None else H - 1
-    dest_y = args.dest_y if args.dest_y is not None else H // 2 - 1
-    via_y = args.via_y if args.via_y is not None else H - 4
+    dest_y = args.dest_y if args.dest_y is not None else H // 2 - 3
+    via_y = args.via_y if args.via_y is not None else H - 5
 
     scroll_w = {}
     page_since = time.time()
@@ -401,10 +402,11 @@ def main():
                         "bottom; 1 = unscaled)")
     p.add_argument("--main-y", type=int, default=None,
                    help="Baseline of the route number "
-                        "(default: panel bottom, filling top to bottom)")
+                        "(default: fills the panel bottom-to-top, "
+                        "centred by spanning the full height)")
     p.add_argument("--dest-y", type=int, default=None,
                    help="Baseline of the destination "
-                        "(default: centred in the top half)")
+                        "(default: pinned to the top)")
     p.add_argument("--via-y", type=int, default=None,
                    help="Baseline of the via row "
                         "(default: centred in the bottom half)")
