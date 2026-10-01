@@ -141,6 +141,23 @@ def token_info():
     return _D["source"] or "none", len(_D["token"])
 
 
+def token_warning():
+    """Human-readable hint when the loaded token looks wrong, else ''.
+
+    Genuine LDBWS tokens from opendata.nationalrail.co.uk are 36-char
+    GUIDs -- anything else is almost certainly a password, an RDM key,
+    or a paste slip, all of which Darwin answers with 401.
+    """
+    if not _D["token"]:
+        return ("no token: set $DARWIN_TOKEN (or DARWIN_API_TOKEN), "
+                ".env, or darwin_token.txt")
+    if len(_D["token"]) != 36:
+        return (f"token is {len(_D['token'])} chars, expected a 36-char "
+                "LDBWS token (GUID) from opendata.nationalrail.co.uk -- "
+                "check it is not an account password or RDM key")
+    return ""
+
+
 def set_token(token):
     _D["token"] = (token or "").strip()
     if _D["token"] and not _D["source"]:
@@ -544,3 +561,50 @@ def enrich_loading(dep, station_crs):
             _D["last_err"], _D["last_err_at"] = msg, now
             print(f"Darwin loading lookup failed: {e}", file=sys.stderr)
         return False
+
+
+def main():
+    """Standalone token/board check: python3 darwin.py [CRS].
+
+    Prints where the token came from (never its value), fetches the
+    Darwin departure board, and lists per-coach loadings. Exit non-zero
+    with the exact error when something fails.
+    """
+    import argparse
+    global DEBUG
+    ap = argparse.ArgumentParser(
+        description="Test the Darwin LDBWS token and show coach loadings")
+    ap.add_argument("crs", nargs="?", default="SOT",
+                    help="Station CRS code (default SOT)")
+    ap.add_argument("--debug", action="store_true",
+                    help="Log requests to stderr")
+    args = ap.parse_args()
+    DEBUG = args.debug
+    set_token(load_token())
+    src, nchars = token_info()
+    print(f"token: from {src}, {nchars} chars")
+    warn = token_warning()
+    if warn:
+        print(f"WARNING: {warn}")
+    if not configured():
+        sys.exit("no token to test with")
+    try:
+        services = get_board(args.crs.strip().upper(), rows=10, window=120)
+    except Exception as e:
+        sys.exit(f"board fetch failed: {e}")
+    print(f"{len(services)} services at {args.crs.strip().upper()}")
+    for s in services:
+        form = s.get("formation")
+        if form:
+            detail = ", ".join(
+                f"{c['number'] or '?'}:"
+                f"{c['loading'] if c['loading'] is not None else '-'}"
+                for c in form["coaches"])
+        else:
+            detail = "no formation"
+        print(f"{s['std']} {s['operator']} -> {s['dest_name']} "
+              f"plat {s['platform']} [{detail}]")
+
+
+if __name__ == "__main__":
+    main()

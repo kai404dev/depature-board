@@ -1232,6 +1232,10 @@ def main():
     if darwin.configured():
         print(f"Darwin loadings enabled (token from {src}, "
               f"{nchars} chars)", file=sys.stderr, flush=True)
+        warn = darwin.token_warning()
+        if warn:
+            print(f"Darwin token WARNING: {warn}",
+                  file=sys.stderr, flush=True)
     else:
         print("Darwin loadings off (no token: set $DARWIN_TOKEN, "
               ".env, or darwin_token.txt)", file=sys.stderr, flush=True)

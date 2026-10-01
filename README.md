@@ -59,14 +59,20 @@ keeps its defaults. Darwin takes over no other display data —
 times, calling points and statuses stay on RTT.
 
 If the journal shows `Darwin loading lookup failed: HTTP Error 401`,
-Darwin rejected the token. Check: the token must be the LDBWS token
-from `opendata.nationalrail.co.uk` (My Account area) — not your
-account password and not a Rail Data Marketplace key. At startup the
-board logs where it found the token, e.g.
-`Darwin loadings enabled (token from .env, 48 chars)` — if it says
-`from environment` while you edited `.env`, an old exported variable
-is winning. `.env` lines look like `DARWIN_TOKEN=abc123` (quotes and
-trailing `# comments` are fine).
+Darwin rejected the token. Test it directly on the Pi (never prints
+the token itself):
+
+```bash
+python3 darwin.py SOT
+```
+
+It reports where the token came from and how long it is. A genuine
+LDBWS token is a 36-char GUID from `opendata.nationalrail.co.uk`
+(My Account area) — not your account password and not a Rail Data
+Marketplace key; anything else gets a 401 and the board warns about
+the length at startup. If it says `from environment` while you edited
+`.env`, an old exported variable is winning. `.env` lines look like
+`DARWIN_TOKEN=abc123` (quotes and trailing `# comments` are fine).
 
 ## Pi setup
 
