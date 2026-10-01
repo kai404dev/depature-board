@@ -641,35 +641,35 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
 
 
         def draw_calling(dep, spec, y_base):
-        """Calling-at line, scrolling when too long."""
-        if dep.get("calling_at"):
-            draw_scroll(F[spec["font"]], C[spec["color"]],
-                        dep["calling_at"], y_base, width - 2, spec["x"])
-        text = dep.get("calling_at")
-        if not text:
-            return
-        fnt = F[spec["font"]]
-        col = C[spec["color"]]
-        key = (spec["font"], text)
-        tw = scroll_w.get(key)
-        if tw is None:
-            if len(scroll_w) > 20:
-                scroll_w.clear()
-            tw = scroll_w[key] = text_width(graphics, offscreen, fnt,
-                                            col, text)
-        if tw <= width - 2:
-            graphics.DrawText(offscreen, fnt,
-                              resolve_x(spec["x"], tw, width),
-                              y_base, col, text)
-            return
-        gap, pause, speed = 48, 2.5, 24.0   # px, seconds, px/second
-        period = tw + gap
-        t = time.time() % (pause + period / speed)
-        off = 0 if (t < pause or preview_frac is not None) \
-            else int((t - pause) * speed)
-        graphics.DrawText(offscreen, fnt, 1 - off, y_base, col, text)
-        graphics.DrawText(offscreen, fnt, 1 - off + period, y_base, col,
-                          text)
+          """Calling-at line, scrolling when too long."""
+          if dep.get("calling_at"):
+              draw_scroll(F[spec["font"]], C[spec["color"]],
+                          dep["calling_at"], y_base, width - 2, spec["x"])
+          text = dep.get("calling_at")
+          if not text:
+              return
+          fnt = F[spec["font"]]
+          col = C[spec["color"]]
+          key = (spec["font"], text)
+          tw = scroll_w.get(key)
+          if tw is None:
+              if len(scroll_w) > 20:
+                  scroll_w.clear()
+              tw = scroll_w[key] = text_width(graphics, offscreen, fnt,
+                                              col, text)
+          if tw <= width - 2:
+              graphics.DrawText(offscreen, fnt,
+                                resolve_x(spec["x"], tw, width),
+                                y_base, col, text)
+              return
+          gap, pause, speed = 48, 2.5, 24.0   # px, seconds, px/second
+          period = tw + gap
+          t = time.time() % (pause + period / speed)
+          off = 0 if (t < pause or preview_frac is not None) \
+              else int((t - pause) * speed)
+          graphics.DrawText(offscreen, fnt, 1 - off, y_base, col, text)
+          graphics.DrawText(offscreen, fnt, 1 - off + period, y_base, col,
+                            text)
 
     def draw_full(dep, y0):
         """One departure in full detail, starting at vertical offset y0."""
