@@ -1353,7 +1353,7 @@ def _stop_label(l):
             ):
                 return (
                     f"{name} "
-                    f"({sched} exp {exp})"
+                    f"({exp})"
                 )
 
             return (
