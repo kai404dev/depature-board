@@ -8,14 +8,11 @@ so departures.py can render either source unchanged.
   Auth       Bearer token. A refresh token is exchanged for a short-life
              access token via /api/get_access_token; a long-life access
              token is used as-is (auto-detected).
-  Quota      30/min, 750/hr, 9000/day, 30000/week. Calling-at + formation
-             come from /gb-nr/service for the lead departure only, cached
-             for SERVICE_TTL seconds, so the board costs about one
-             location call per refresh plus one service call per 90 s.
+  Quota      30/min, 750/hr, 9000/day, 30000/week.
 
-Token lookup (read once at startup, before the LED library drops root):
-  1. $RTT_TOKEN (or RTT_API_KEY) in the environment, then .env next to this script
-  2. rtt_token.txt next to this script (chmod 600, keep out of git)
+Debugging:
+  Set DEBUG = True below to log RTT requests and every service filtering
+  decision to stderr.
 
 Pure standard library. No hardware needed.
 """
@@ -36,16 +33,27 @@ except Exception:
     LONDON = None
 
 
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
 RTT_BASE = "https://data.rtt.io"
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 TOKEN_FILE = os.path.join(THIS_DIR, "rtt_token.txt")
+
+# Set True while diagnosing the departure board.
+DEBUG = True
 
 # Flip if the coach diagram on page 3 comes out back to front.
 REVERSE_FORMATION = False
 
 # Rail replacement buses: headcode 0B00 (and any bus-mode service).
 HIDE_HEADCODES = {"0B00"}
-HIDE_MODES = {"BUS", "SCHEDULED_BUS", "REPLACEMENT_BUS"}
+HIDE_MODES = {
+    "BUS",
+    "SCHEDULED_BUS",
+    "REPLACEMENT_BUS",
+}
 
 STATUS_TEXT = {
     "APPROACHING": "is approaching the station",
@@ -59,11 +67,8 @@ STATUS_TEXT = {
 SERVICE_TTL = 90
 FAIL_TTL = 120
 
-# How far after the scheduled/expected departure a service can remain
-# on the board if RTT has not supplied an actual departure.
-#
-# This is deliberately short. It prevents an old timetable service with
-# no realtime report from appearing as the "next" train for hours.
+# How long a service can remain after its expected departure if RTT has
+# not reported an actual departure.
 STALE_SERVICE_GRACE = 120
 
 _S = {
@@ -78,6 +83,72 @@ _S = {
 
 
 TOKEN_KEYS = ("RTT_TOKEN", "RTT_API_KEY")
+
+
+# ---------------------------------------------------------------------------
+# Debugging
+# ---------------------------------------------------------------------------
+
+def _debug(message):
+    """Write a timestamped debugging message to stderr."""
+    if not DEBUG:
+        return
+
+    now = datetime.now().astimezone().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    print(
+        f"[RTT DEBUG {now}] {message}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def _debug_service(svc, prefix="SERVICE"):
+    """Print a compact summary of an RTT service."""
+    tdat = svc.get("temporalData") or {}
+    dep = tdat.get("departure") or {}
+    meta = svc.get("scheduleMetadata") or {}
+    lmeta = svc.get("locationMetadata") or {}
+
+    identity = (
+        meta.get("identity")
+        or "?"
+    )
+
+    headcode = (
+        meta.get("trainReportingIdentity")
+        or "?"
+    )
+
+    origin = [
+        (x.get("location") or {}).get("description")
+        for x in (svc.get("origin") or [])
+    ]
+
+    destination = [
+        (x.get("location") or {}).get("description")
+        for x in (svc.get("destination") or [])
+    ]
+
+    _debug(
+        f"{prefix} "
+        f"identity={identity} "
+        f"headcode={headcode} "
+        f"origin={origin} "
+        f"destination={destination} "
+        f"scheduled={dep.get('scheduleAdvertised') or dep.get('scheduleInternal')} "
+        f"forecast={dep.get('realtimeForecast')} "
+        f"estimate={dep.get('realtimeEstimate')} "
+        f"actual={dep.get('realtimeActual')} "
+        f"cancelled={dep.get('isCancelled')} "
+        f"displayAs={tdat.get('displayAs')} "
+        f"callType={tdat.get('realtimeCallType')} "
+        f"status={tdat.get('status')} "
+        f"platform="
+        f"{lmeta.get('platform')}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -121,17 +192,24 @@ def load_token():
     """Token from environment, .env, then rtt_token.txt."""
     for k in TOKEN_KEYS:
         if os.environ.get(k, "").strip():
+            _debug(f"Using RTT token from environment variable {k}")
             return os.environ[k].strip()
 
-    env = _read_dotenv(os.path.join(THIS_DIR, ".env"))
+    env = _read_dotenv(
+        os.path.join(THIS_DIR, ".env")
+    )
 
     for k in TOKEN_KEYS:
         if env.get(k, "").strip():
+            _debug(f"Using RTT token from .env key {k}")
             return env[k].strip()
 
     if os.path.exists(TOKEN_FILE):
+        _debug(f"Using RTT token from {TOKEN_FILE}")
         with open(TOKEN_FILE) as f:
             return f.read().strip()
+
+    _debug("No RTT token found")
 
     return ""
 
@@ -151,15 +229,29 @@ def _request(path, params=None, bearer="", timeout=10):
     now = time.time()
 
     if now < _S["blocked_until"]:
+        remaining = int(
+            _S["blocked_until"] - now
+        )
+
+        _debug(
+            f"RATE LIMITED: refusing request for "
+            f"another {remaining}s"
+        )
+
         raise RuntimeError(
-            f"RTT rate limited, retry in "
-            f"{int(_S['blocked_until'] - now)}s"
+            f"RTT rate limited, retry in {remaining}s"
         )
 
     url = RTT_BASE + path
 
     if params:
         url += "?" + urllib.parse.urlencode(params)
+
+    # Do not log the bearer token.
+    _debug(
+        f"GET {path} "
+        f"params={params}"
+    )
 
     req = urllib.request.Request(
         url,
@@ -170,9 +262,26 @@ def _request(path, params=None, bearer="", timeout=10):
         },
     )
 
+    started = time.monotonic()
+
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(
+            req,
+            timeout=timeout,
+        ) as resp:
             body = resp.read()
+
+            elapsed = (
+                time.monotonic()
+                - started
+            )
+
+            _debug(
+                f"HTTP {resp.status} "
+                f"{path} "
+                f"in {elapsed:.3f}s "
+                f"bytes={len(body)}"
+            )
 
             if not body.strip():
                 return None
@@ -180,13 +289,36 @@ def _request(path, params=None, bearer="", timeout=10):
             return json.loads(body)
 
     except urllib.error.HTTPError as e:
+        elapsed = (
+            time.monotonic()
+            - started
+        )
+
+        _debug(
+            f"HTTP ERROR {e.code} "
+            f"{path} "
+            f"in {elapsed:.3f}s"
+        )
+
         if e.code == 429:
             try:
-                wait = int(e.headers.get("Retry-After", "60"))
+                wait = int(
+                    e.headers.get(
+                        "Retry-After",
+                        "60",
+                    )
+                )
             except (TypeError, ValueError):
                 wait = 60
 
-            _S["blocked_until"] = time.time() + wait
+            _S["blocked_until"] = (
+                time.time() + wait
+            )
+
+            _debug(
+                f"RTT rate limit: "
+                f"Retry-After={wait}s"
+            )
 
         raise
 
@@ -197,13 +329,14 @@ def _parse_dt(value):
         return None
 
     try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(
+            value.replace("Z", "+00:00")
+        )
 
-        # RTT timestamps should be timezone-aware. If one somehow arrives
-        # without a timezone, treat it as UTC rather than mixing naive and
-        # aware datetimes later.
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(
+                tzinfo=timezone.utc
+            )
 
         return dt
 
@@ -248,9 +381,12 @@ def _bearer():
 
     if (
         _S["access"]
-        and time.time() < _S["valid_until"] - 60
+        and time.time()
+        < _S["valid_until"] - 60
     ):
         return _S["access"]
+
+    _debug("Requesting RTT access token")
 
     try:
         data = _request(
@@ -259,8 +395,19 @@ def _bearer():
         ) or {}
 
     except urllib.error.HTTPError as e:
-        if e.code in (400, 401, 403, 404):
+        if e.code in (
+            400,
+            401,
+            403,
+            404,
+        ):
+            _debug(
+                "Access-token exchange rejected; "
+                "using supplied token directly"
+            )
+
             _S["direct"] = True
+
             return tok
 
         raise
@@ -268,16 +415,29 @@ def _bearer():
     access = data.get("token")
 
     if not access:
+        _debug(
+            "RTT access-token response contained no token; "
+            "using supplied token directly"
+        )
+
         _S["direct"] = True
+
         return tok
 
-    vu = _parse_dt(data.get("validUntil"))
+    vu = _parse_dt(
+        data.get("validUntil")
+    )
 
     _S["access"] = access
     _S["valid_until"] = (
         vu.timestamp()
         if vu
         else time.time() + 300
+    )
+
+    _debug(
+        "RTT access token obtained; "
+        f"valid_until={data.get('validUntil')}"
     )
 
     return access
@@ -298,8 +458,14 @@ def _get(path, params=None):
                 and attempt == 0
                 and not _S["direct"]
             ):
+                _debug(
+                    "RTT access token returned 401; "
+                    "refreshing token"
+                )
+
                 _S["access"] = None
                 _S["valid_until"] = 0.0
+
                 continue
 
             if e.code == 401:
@@ -328,65 +494,92 @@ def _plain_formation(n):
 
 
 def _departure_times(dep):
-    """Return scheduled, expected and actual Unix timestamps.
-
-    RTT can provide several different times:
-
-      scheduleAdvertised
-      scheduleInternal
-      realtimeForecast
-      realtimeEstimate
-      realtimeActual
-
-    For deciding whether a train is still relevant, realtimeActual takes
-    precedence, then forecast, then estimate, then schedule.
-    """
+    """Return scheduled, expected and actual Unix timestamps."""
 
     scheduled = (
-        _timestamp(dep.get("scheduleAdvertised"))
-        or _timestamp(dep.get("scheduleInternal"))
+        _timestamp(
+            dep.get("scheduleAdvertised")
+        )
+        or _timestamp(
+            dep.get("scheduleInternal")
+        )
     )
 
     forecast = (
-        _timestamp(dep.get("realtimeForecast"))
-        or _timestamp(dep.get("realtimeEstimate"))
+        _timestamp(
+            dep.get("realtimeForecast")
+        )
+        or _timestamp(
+            dep.get("realtimeEstimate")
+        )
     )
 
-    actual = _timestamp(dep.get("realtimeActual"))
+    actual = _timestamp(
+        dep.get("realtimeActual")
+    )
 
-    expected = actual or forecast or scheduled
+    expected = (
+        actual
+        or forecast
+        or scheduled
+    )
 
-    return scheduled, expected, actual
+    return (
+        scheduled,
+        expected,
+        actual,
+    )
 
 
 def _to_departure(svc, now):
-    """Convert one RTT location service into a board departure.
-
-    The important part here is that a service is explicitly checked against
-    the current time.
-
-    A timetable service whose scheduled time has passed is allowed through
-    only if RTT says it is still expected to depart in the future.
-
-    Once RTT reports an actual departure, the service is removed shortly
-    afterwards.
-    """
+    """Convert one RTT location service into a board departure."""
 
     tdat = svc.get("temporalData") or {}
     dep = tdat.get("departure") or {}
     meta = svc.get("scheduleMetadata") or {}
     lmeta = svc.get("locationMetadata") or {}
 
+    identity = (
+        meta.get("identity")
+        or "?"
+    )
+
+    headcode = (
+        meta.get("trainReportingIdentity")
+        or "?"
+    )
+
+    if DEBUG:
+        _debug_service(
+            svc,
+            "CHECK",
+        )
+
     if not dep:
+        _debug(
+            f"REJECT {identity}/{headcode}: "
+            "no departure temporal data"
+        )
         return None
 
     if meta.get("inPassengerService") is False:
+        _debug(
+            f"REJECT {identity}/{headcode}: "
+            "not in passenger service"
+        )
         return None
 
     if (
-        meta.get("trainReportingIdentity") in HIDE_HEADCODES
-        or meta.get("modeType") in HIDE_MODES
+        meta.get("trainReportingIdentity")
+        in HIDE_HEADCODES
+        or meta.get("modeType")
+        in HIDE_MODES
     ):
+        _debug(
+            f"REJECT {identity}/{headcode}: "
+            f"hidden mode/headcode "
+            f"mode={meta.get('modeType')}"
+        )
         return None
 
     display = tdat.get("displayAs")
@@ -397,9 +590,19 @@ def _to_departure(svc, now):
         "CANCELLED",
         "DIVERTED",
     ):
+        _debug(
+            f"REJECT {identity}/{headcode}: "
+            f"displayAs={display}"
+        )
         return None
 
-    if tdat.get("realtimeCallType") == "OPERATIONAL_ONLY":
+    if tdat.get(
+        "realtimeCallType"
+    ) == "OPERATIONAL_ONLY":
+        _debug(
+            f"REJECT {identity}/{headcode}: "
+            "operational-only call"
+        )
         return None
 
     sched_s = (
@@ -411,66 +614,147 @@ def _to_departure(svc, now):
     hhmm = _hhmm(sched_s)
 
     if not sched or not hhmm:
+        _debug(
+            f"REJECT {identity}/{headcode}: "
+            f"invalid scheduled departure={sched_s!r}"
+        )
         return None
 
-    scheduled_ts, expected_ts, actual_ts = _departure_times(dep)
+    scheduled_ts, expected_ts, actual_ts = (
+        _departure_times(dep)
+    )
 
     if scheduled_ts is None:
+        _debug(
+            f"REJECT {identity}/{headcode}: "
+            "could not parse scheduled timestamp"
+        )
         return None
 
-    cancelled = bool(dep.get("isCancelled")) or display in (
-        "CANCELLED",
-        "DIVERTED",
+    cancelled = (
+        bool(dep.get("isCancelled"))
+        or display in (
+            "CANCELLED",
+            "DIVERTED",
+        )
+    )
+
+    now_dt = datetime.fromtimestamp(
+        now,
+        tz=timezone.utc,
+    )
+
+    scheduled_dt = datetime.fromtimestamp(
+        scheduled_ts,
+        tz=timezone.utc,
+    )
+
+    _debug(
+        f"TIMES {identity}/{headcode}: "
+        f"now={now_dt.isoformat()} "
+        f"scheduled={scheduled_dt.isoformat()} "
+        f"expected="
+        f"{datetime.fromtimestamp(expected_ts, tz=timezone.utc).isoformat() if expected_ts else None} "
+        f"actual="
+        f"{datetime.fromtimestamp(actual_ts, tz=timezone.utc).isoformat() if actual_ts else None}"
     )
 
     # ---------------------------------------------------------------
-    # IMPORTANT: stale/future filtering
-    # ---------------------------------------------------------------
-    #
-    # If RTT has given us an actual departure, the train has gone.
-    #
-    # If it has not departed but has a realtime forecast/estimate, use
-    # that realtime time to decide whether it is still relevant.
-    #
-    # If there is no realtime prediction, use the scheduled time with
-    # a small grace period.
-    #
-    # This prevents old services from becoming the first result simply
-    # because RTT returned them in the location response.
+    # Actual departure
     # ---------------------------------------------------------------
 
     if actual_ts is not None:
         if actual_ts < now - 60:
+            _debug(
+                f"REJECT {identity}/{headcode}: "
+                f"already departed "
+                f"{int(now - actual_ts)}s ago"
+            )
             return None
 
-        # If the actual is in the future, that is unusual but should
-        # still be treated as the current expected departure.
         expected_ts = actual_ts
 
+    # ---------------------------------------------------------------
+    # Realtime expected departure
+    # ---------------------------------------------------------------
+
     elif expected_ts is not None:
-        if expected_ts < now - STALE_SERVICE_GRACE:
+        age = now - expected_ts
+
+        if age > STALE_SERVICE_GRACE:
+            _debug(
+                f"REJECT {identity}/{headcode}: "
+                f"expected departure was "
+                f"{int(age)}s ago "
+                f"(grace={STALE_SERVICE_GRACE}s)"
+            )
             return None
 
+        _debug(
+            f"KEEP {identity}/{headcode}: "
+            f"expected departure is "
+            f"{int(-age)}s from now"
+        )
+
+    # ---------------------------------------------------------------
+    # No realtime data
+    # ---------------------------------------------------------------
+
     else:
-        if scheduled_ts < now - STALE_SERVICE_GRACE:
+        age = now - scheduled_ts
+
+        if age > STALE_SERVICE_GRACE:
+            _debug(
+                f"REJECT {identity}/{headcode}: "
+                f"scheduled departure was "
+                f"{int(age)}s ago "
+                f"with no realtime data"
+            )
             return None
 
         expected_ts = scheduled_ts
 
-    # Cancelled services should not hang around after their scheduled
-    # departure unless RTT has a genuine future realtime movement.
-    if cancelled:
-        if expected_ts is None or expected_ts < now:
-            return None
+        _debug(
+            f"KEEP {identity}/{headcode}: "
+            "using scheduled departure because "
+            "no realtime time was available"
+        )
 
     # ---------------------------------------------------------------
-    # Delay calculation
+    # Cancelled services
+    # ---------------------------------------------------------------
+
+    if cancelled:
+        if (
+            expected_ts is None
+            or expected_ts < now
+        ):
+            _debug(
+                f"REJECT {identity}/{headcode}: "
+                "cancelled and no longer in the future"
+            )
+            return None
+
+        _debug(
+            f"KEEP {identity}/{headcode}: "
+            "cancelled but RTT still reports a "
+            "future expected time"
+        )
+
+    # ---------------------------------------------------------------
+    # Delay
     # ---------------------------------------------------------------
 
     fc = (
-        _parse_dt(dep.get("realtimeActual"))
-        or _parse_dt(dep.get("realtimeForecast"))
-        or _parse_dt(dep.get("realtimeEstimate"))
+        _parse_dt(
+            dep.get("realtimeActual")
+        )
+        or _parse_dt(
+            dep.get("realtimeForecast")
+        )
+        or _parse_dt(
+            dep.get("realtimeEstimate")
+        )
     )
 
     mins = 0
@@ -487,21 +771,34 @@ def _to_departure(svc, now):
             )
 
         elif isinstance(
-            dep.get("realtimeAdvertisedLateness"),
+            dep.get(
+                "realtimeAdvertisedLateness"
+            ),
             (int, float),
         ):
             mins = int(
                 round(
-                    dep["realtimeAdvertisedLateness"]
+                    dep[
+                        "realtimeAdvertisedLateness"
+                    ]
                 )
             )
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError,
+    ):
         mins = 0
 
-    mins = max(0, mins)
+    mins = max(
+        0,
+        mins,
+    )
 
-    delayed = mins >= 1 and not cancelled
+    delayed = (
+        mins >= 1
+        and not cancelled
+    )
 
     # ---------------------------------------------------------------
     # Reasons
@@ -513,10 +810,16 @@ def _to_departure(svc, now):
     for r in svc.get("reasons") or []:
         txt = r.get("shortText")
 
-        if r.get("type") == "CANCEL" and not cancel_reason:
+        if (
+            r.get("type") == "CANCEL"
+            and not cancel_reason
+        ):
             cancel_reason = txt
 
-        elif r.get("type") == "DELAY" and not delay_reason:
+        elif (
+            r.get("type") == "DELAY"
+            and not delay_reason
+        ):
             delay_reason = txt
 
     # ---------------------------------------------------------------
@@ -537,14 +840,21 @@ def _to_departure(svc, now):
     # ---------------------------------------------------------------
 
     names = [
-        (p.get("location") or {}).get("description")
-        for p in (svc.get("destination") or [])
+        (p.get("location") or {}).get(
+            "description"
+        )
+        for p in (
+            svc.get("destination")
+            or []
+        )
     ]
 
     dest = (
         " & ".join(
             dict.fromkeys(
-                n for n in names if n
+                n
+                for n in names
+                if n
             )
         )
         or "?"
@@ -565,7 +875,9 @@ def _to_departure(svc, now):
         "delay_minutes": mins,
 
         "headcode": (
-            meta.get("trainReportingIdentity")
+            meta.get(
+                "trainReportingIdentity"
+            )
             or meta.get("identity")
             or ""
         ),
@@ -574,11 +886,21 @@ def _to_departure(svc, now):
             meta.get("operator") or {}
         ).get("name", ""),
 
-        "operating_date": meta.get("departureDate"),
-        "rtt_identity": meta.get("identity"),
+        "operating_date": meta.get(
+            "departureDate"
+        ),
 
-        "cancellation_reason": cancel_reason,
-        "delay_reason": delay_reason,
+        "rtt_identity": meta.get(
+            "identity"
+        ),
+
+        "cancellation_reason": (
+            cancel_reason
+        ),
+
+        "delay_reason": (
+            delay_reason
+        ),
 
         "calling_at": "",
 
@@ -588,69 +910,118 @@ def _to_departure(svc, now):
 
         "note_lines": [],
 
-        "_loc_status": tdat.get("status"),
-        "_plat_planned": pm.get("planned"),
-        "_alloc_index": lmeta.get("allocationIndex"),
+        "_loc_status": tdat.get(
+            "status"
+        ),
 
-        # Internal values used for sorting/debugging.
+        "_plat_planned": pm.get(
+            "planned"
+        ),
+
+        "_alloc_index": lmeta.get(
+            "allocationIndex"
+        ),
+
         "_scheduled_ts": scheduled_ts,
         "_expected_ts": expected_ts,
         "_actual_ts": actual_ts,
     }
 
-    nv = lmeta.get("numberOfVehicles")
+    nv = lmeta.get(
+        "numberOfVehicles"
+    )
 
     if isinstance(nv, int) and nv > 0:
-        d["formation"] = _plain_formation(nv)
+        d["formation"] = (
+            _plain_formation(nv)
+        )
 
     d["note_lines"] = _notes(d)
 
-    # Sort by the time the train is actually expected to depart.
-    #
-    # This is important for delayed trains. For example:
-    #
-    #   05:20 scheduled, 05:45 expected
-    #   05:30 scheduled, 05:35 expected
-    #
-    # The second train should appear first.
     sort_key = (
         expected_ts
         if expected_ts is not None
         else scheduled_ts
     )
 
+    _debug(
+        f"ACCEPT {identity}/{headcode}: "
+        f"scheduled={hhmm} "
+        f"expected={_hhmm("
+        f"dep.get('realtimeActual') "
+        f"or dep.get('realtimeForecast') "
+        f"or dep.get('realtimeEstimate') "
+        f"or sched_s"
+        f")} "
+        f"delay={mins} "
+        f"cancelled={cancelled} "
+        f"platform={platform} "
+        f"destination={dest}"
+    )
+
     return sort_key, d
 
+
+# ---------------------------------------------------------------------------
+# Formation
+# ---------------------------------------------------------------------------
 
 def _cars_from_alloc(a):
     """Coach list from a NetworkRailAllocation."""
     cars = []
 
-    kyt = a.get("knowYourTrainData") or {}
+    kyt = (
+        a.get("knowYourTrainData")
+        or {}
+    )
 
-    for g in kyt.get("data") or []:
-        for v in g.get("vehicles") or []:
-            if v.get("isPassengerVehicle") is False:
+    for g in (
+        kyt.get("data")
+        or []
+    ):
+        for v in (
+            g.get("vehicles")
+            or []
+        ):
+            if (
+                v.get(
+                    "isPassengerVehicle"
+                )
+                is False
+            ):
                 continue
 
             fac = {
                 str(x).lower()
                 for x in (
-                    v.get("individualFacilities")
+                    v.get(
+                        "individualFacilities"
+                    )
                     or []
                 )
             }
 
             cars.append({
-                "first": "first" in fac,
-                "accessible": "wheelchair" in fac,
+                "first": (
+                    "first" in fac
+                ),
+                "accessible": (
+                    "wheelchair" in fac
+                ),
             })
 
     if not cars:
-        n = a.get("passengerVehicles")
+        n = a.get(
+            "passengerVehicles"
+        )
 
-        if isinstance(n, int) and n > 0:
-            cars = _plain_formation(n)["cars"]
+        if (
+            isinstance(n, int)
+            and n > 0
+        ):
+            cars = _plain_formation(
+                n
+            )["cars"]
 
     if REVERSE_FORMATION:
         cars.reverse()
@@ -658,27 +1029,45 @@ def _cars_from_alloc(a):
     return cars
 
 
+# ---------------------------------------------------------------------------
+# Notes
+# ---------------------------------------------------------------------------
+
 def _notes(d):
     """Page-2 information as one sentence."""
 
     if d.get("is_cancelled"):
-        r = d.get("cancellation_reason")
+        r = d.get(
+            "cancellation_reason"
+        )
 
         return [
             "This service has been cancelled"
-            + (f": {r}." if r else ".")
+            + (
+                f": {r}."
+                if r
+                else "."
+            )
         ]
 
     preds = []
 
     n = len(
-        (d.get("formation") or {}).get("cars") or []
+        (
+            d.get("formation")
+            or {}
+        ).get("cars")
+        or []
     )
 
     if n:
         preds.append(
             f"is formed of {n} coach"
-            + ("" if n == 1 else "es")
+            + (
+                ""
+                if n == 1
+                else "es"
+            )
         )
 
     st = STATUS_TEXT.get(
@@ -712,8 +1101,13 @@ def _notes(d):
 
         out.append(line)
 
-    pp = d.get("_plat_planned")
-    pl = d.get("platform")
+    pp = d.get(
+        "_plat_planned"
+    )
+
+    pl = d.get(
+        "platform"
+    )
 
     if (
         pp
@@ -721,7 +1115,8 @@ def _notes(d):
         and str(pp) != str(pl)
     ):
         out.append(
-            f"Platform changed from {pp} to {pl}."
+            f"Platform changed from "
+            f"{pp} to {pl}."
         )
 
     return [
@@ -730,57 +1125,99 @@ def _notes(d):
 
 
 # ---------------------------------------------------------------------------
-# Calling points / service enrichment
+# Service calling points
 # ---------------------------------------------------------------------------
 
 def _stop_label(l):
     """'Name (10:42)' or 'Name (10:42 exp 10:45)'."""
+
     name = (
         l.get("location") or {}
-    ).get("description")
+    ).get(
+        "description"
+    )
 
     if not name:
         return None
 
-    td = l.get("temporalData") or {}
+    td = (
+        l.get("temporalData")
+        or {}
+    )
 
-    for key in ("arrival", "departure"):
+    for key in (
+        "arrival",
+        "departure",
+    ):
         t = td.get(key) or {}
 
         sched = _hhmm(
-            t.get("scheduleAdvertised")
-            or t.get("scheduleInternal")
+            t.get(
+                "scheduleAdvertised"
+            )
+            or t.get(
+                "scheduleInternal"
+            )
         )
 
         if sched:
             exp = _hhmm(
-                t.get("realtimeActual")
-                or t.get("realtimeForecast")
-                or t.get("realtimeEstimate")
+                t.get(
+                    "realtimeActual"
+                )
+                or t.get(
+                    "realtimeForecast"
+                )
+                or t.get(
+                    "realtimeEstimate"
+                )
             )
 
-            if exp and exp != sched:
+            if (
+                exp
+                and exp != sched
+            ):
                 return (
                     f"{name} "
                     f"({sched} exp {exp})"
                 )
 
-            return f"{name} ({sched})"
+            return (
+                f"{name} ({sched})"
+            )
 
     return name
 
 
 def _apply_service(d, svc, station):
-    locs = svc.get("locations") or []
+    locs = (
+        svc.get("locations")
+        or []
+    )
 
     idx = None
 
     for i, l in enumerate(locs):
-        loc = l.get("location") or {}
+        loc = (
+            l.get("location")
+            or {}
+        )
 
         if (
-            station in (loc.get("shortCodes") or [])
-            or station in (loc.get("longCodes") or [])
+            station
+            in (
+                loc.get(
+                    "shortCodes"
+                )
+                or []
+            )
+            or station
+            in (
+                loc.get(
+                    "longCodes"
+                )
+                or []
+            )
         ):
             idx = i
             break
@@ -789,9 +1226,14 @@ def _apply_service(d, svc, station):
 
     if idx is not None:
         for l in locs[idx + 1:]:
-            td = l.get("temporalData") or {}
+            td = (
+                l.get("temporalData")
+                or {}
+            )
 
-            if td.get("displayAs") not in (
+            if td.get(
+                "displayAs"
+            ) not in (
                 "CALL",
                 "TERMINATES",
             ):
@@ -799,14 +1241,23 @@ def _apply_service(d, svc, station):
 
             label = _stop_label(l)
 
-            if label and label not in stops:
+            if (
+                label
+                and label not in stops
+            ):
                 stops.append(label)
 
     op = (
         (
-            svc.get("scheduleMetadata") or {}
-        ).get("operator") or {}
-    ).get("name") or d.get("operator")
+            svc.get(
+                "scheduleMetadata"
+            )
+            or {}
+        ).get("operator")
+        or {}
+    ).get(
+        "name"
+    ) or d.get("operator")
 
     if op:
         d["operator"] = op
@@ -819,19 +1270,34 @@ def _apply_service(d, svc, station):
 
     if op:
         text = (
-            (text + " ") if text else ""
-        ) + f"This service is operated by {op}."
+            (text + " ")
+            if text
+            else ""
+        ) + (
+            f"This service is operated "
+            f"by {op}."
+        )
 
     d["calling_at"] = text
 
-    alloc = svc.get("allocationData") or []
+    alloc = (
+        svc.get(
+            "allocationData"
+        )
+        or []
+    )
 
     if alloc:
-        want = d.get("_alloc_index")
+        want = d.get(
+            "_alloc_index"
+        )
 
         if idx is not None:
             want = (
-                locs[idx].get("locationMetadata") or {}
+                locs[idx].get(
+                    "locationMetadata"
+                )
+                or {}
             ).get(
                 "allocationIndex",
                 want,
@@ -839,8 +1305,11 @@ def _apply_service(d, svc, station):
 
         a = next(
             (
-                x for x in alloc
-                if x.get("allocationIndex") == want
+                x
+                for x in alloc
+                if x.get(
+                    "allocationIndex"
+                ) == want
             ),
             alloc[0],
         )
@@ -854,17 +1323,33 @@ def _apply_service(d, svc, station):
 
     d["note_lines"] = _notes(d)
 
+    _debug(
+        f"ENRICH {d.get('rtt_identity')}/"
+        f"{d.get('headcode')}: "
+        f"calling_points={len(stops)} "
+        f"formation={len("
+        f"(d.get('formation') or {}).get('cars') or []"
+        f")} "
+        f"operator={op}"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def fetch_departures(station, limit=3, window=360):
-    """Return the next `limit` passenger departures.
+def fetch_departures(
+    station,
+    limit=3,
+    window=360,
+):
+    """Return the next `limit` passenger departures."""
 
-    Services are filtered against the current UTC timestamp rather than
-    trusting the order returned by RTT.
-    """
+    _debug(
+        f"FETCH station={station} "
+        f"limit={limit} "
+        f"window={window}s"
+    )
 
     params = {
         "code": station,
@@ -874,7 +1359,9 @@ def fetch_departures(station, limit=3, window=360):
     }
 
     if not _S["window_ok"]:
-        params.pop("timeWindow")
+        params.pop(
+            "timeWindow"
+        )
 
     try:
         data = _get(
@@ -884,28 +1371,69 @@ def fetch_departures(station, limit=3, window=360):
 
     except urllib.error.HTTPError as e:
         if (
-            e.code in (400, 403)
+            e.code in (
+                400,
+                403,
+            )
             and "timeWindow" in params
         ):
+            _debug(
+                "RTT rejected timeWindow; "
+                "retrying without timeWindow"
+            )
+
             _S["window_ok"] = False
-            params.pop("timeWindow")
+
+            params.pop(
+                "timeWindow"
+            )
 
             data = _get(
                 "/gb-nr/location",
                 params,
             )
+
         else:
             raise
 
-    # Use one fixed "now" for the entire response so every service is
-    # evaluated against exactly the same instant.
+    services = (
+        (data or {}).get(
+            "services"
+        )
+        or []
+    )
+
+    _debug(
+        f"RTT returned "
+        f"{len(services)} services"
+    )
+
     now = time.time()
+
+    now_local = datetime.fromtimestamp(
+        now,
+        tz=(
+            LONDON
+            or timezone.utc
+        ),
+    )
+
+    _debug(
+        f"FILTER NOW = "
+        f"{now_local.isoformat()}"
+    )
 
     rows = []
 
-    for svc in (
-        (data or {}).get("services") or []
+    for index, svc in enumerate(
+        services,
+        start=1,
     ):
+        _debug(
+            f"--- SERVICE {index}/"
+            f"{len(services)} ---"
+        )
+
         result = _to_departure(
             svc,
             now,
@@ -914,42 +1442,112 @@ def fetch_departures(station, limit=3, window=360):
         if result:
             rows.append(result)
 
-    # Sort by expected realtime departure, falling back to timetable
-    # departure where RTT has no prediction.
     rows.sort(
         key=lambda r: r[0]
     )
 
     departures = [
-        d for _, d in rows[:limit]
+        d
+        for _, d in rows[:limit]
     ]
+
+    _debug(
+        f"AFTER FILTER: "
+        f"{len(rows)} valid services"
+    )
+
+    for index, d in enumerate(
+        departures,
+        start=1,
+    ):
+        _debug(
+            f"RESULT {index}: "
+            f"{d.get('scheduled_time')} "
+            f"{d.get('headcode')} "
+            f"{d.get('destination_name')} "
+            f"platform={d.get('platform')} "
+            f"delay={d.get('delay_minutes')} "
+            f"cancelled={d.get('is_cancelled')} "
+            f"expected="
+            f"{_hhmm_from_timestamp("
+            f"d.get('_expected_ts')"
+            f")}"
+        )
 
     return departures
 
 
-def enrich(deps, station):
-    """Attach calling_at + formation from /gb-nr/service.
+def _hhmm_from_timestamp(ts):
+    """Unix timestamp -> local HH:MM for debug output."""
+    if ts is None:
+        return None
 
-    Only the lead departure is enriched. This keeps the RTT API quota low.
-    """
+    try:
+        dt = datetime.fromtimestamp(
+            ts,
+            tz=(
+                LONDON
+                or timezone.utc
+            ),
+        )
+
+        return dt.strftime(
+            "%H:%M:%S"
+        )
+
+    except (
+        TypeError,
+        ValueError,
+        OSError,
+    ):
+        return None
+
+
+def enrich(
+    deps,
+    station,
+):
+    """Attach calling_at + formation from /gb-nr/service."""
 
     cache = _S["svc_cache"]
     now = time.time()
 
+    if not deps:
+        _debug(
+            "ENRICH: no departures to enrich"
+        )
+
+        return deps
+
     for d in deps[:1]:
-        ident = d.get("rtt_identity")
-        date = d.get("operating_date")
+        ident = d.get(
+            "rtt_identity"
+        )
+
+        date = d.get(
+            "operating_date"
+        )
 
         if not ident or not date:
+            _debug(
+                "ENRICH: missing identity/date"
+            )
             continue
 
-        key = f"{ident}:{date}"
+        key = (
+            f"{ident}:{date}"
+        )
 
-        hit = cache.get(key)
+        hit = cache.get(
+            key
+        )
 
         ttl = (
             SERVICE_TTL
-            if hit and hit[1] is not None
+            if (
+                hit
+                and hit[1] is not None
+            )
             else FAIL_TTL
         )
 
@@ -959,7 +1557,20 @@ def enrich(deps, station):
         ):
             svc = hit[1]
 
+            _debug(
+                f"SERVICE CACHE HIT "
+                f"{key} "
+                f"age={int(now - hit[0])}s "
+                f"ttl={ttl}s "
+                f"found={svc is not None}"
+            )
+
         else:
+            _debug(
+                f"SERVICE CACHE MISS "
+                f"{key}"
+            )
+
             try:
                 data = _get(
                     "/gb-nr/service",
@@ -970,11 +1581,24 @@ def enrich(deps, station):
                 )
 
                 svc = (
-                    (data or {}).get("service")
+                    (data or {}).get(
+                        "service"
+                    )
                     or None
                 )
 
+                _debug(
+                    f"SERVICE LOOKUP "
+                    f"{key}: "
+                    f"found={svc is not None}"
+                )
+
             except Exception as e:
+                _debug(
+                    f"SERVICE LOOKUP FAILED "
+                    f"{key}: {e}"
+                )
+
                 print(
                     f"RTT service fetch failed "
                     f"for {ident}: {e}",
@@ -989,12 +1613,13 @@ def enrich(deps, station):
             )
 
             if len(cache) > 40:
-                cache.pop(
-                    min(
-                        cache,
-                        key=lambda k: cache[k][0],
-                    )
+                oldest = min(
+                    cache,
+                    key=lambda k:
+                    cache[k][0],
                 )
+
+                del cache[oldest]
 
         if svc:
             _apply_service(
@@ -1006,12 +1631,29 @@ def enrich(deps, station):
     return deps
 
 
-def get_departures(station, limit=3):
+def get_departures(
+    station,
+    limit=3,
+):
     """Return enriched next departures."""
-    return enrich(
+
+    _debug(
+        f"GET_DEPARTURES "
+        f"station={station} "
+        f"limit={limit}"
+    )
+
+    result = enrich(
         fetch_departures(
             station,
             limit,
         ),
         station,
     )
+
+    _debug(
+        f"GET_DEPARTURES COMPLETE "
+        f"returned={len(result)}"
+    )
+
+    return result
