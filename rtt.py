@@ -576,12 +576,10 @@ def _to_departure(svc, now, station=None):
     # ---------------------------------------------------------------
     # Basic service filtering
     # ---------------------------------------------------------------
+    display_as = tdat.get("displayAs")
 
-    if meta.get("inPassengerService") is False:
-        _debug(
-            f"REJECT {identity}/{headcode}: "
-            "not in passenger service"
-        )
+    if meta.get("inPassengerService") is False and display_as != "PASS":
+        _debug(f"REJECT {identity}/{headcode}: not in passenger service")
         return None
 
     if (
