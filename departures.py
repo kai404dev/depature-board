@@ -62,7 +62,7 @@ import rtt
 
 FONT_ROLES = ("top", "row", "small", "big", "tiny")
 COLOR_NAMES = ("text", "time", "platform", "ok", "alert", "mark")
-
+SOURCES = ("htrs", "rtt")
 
 def _bad(path, msg):
     sys.exit(f"layout {path}: {msg}")
