@@ -207,7 +207,7 @@ def _passes_here(timetable, here):
 
 NONSTOP_TEXT = "This service does not stop here"
 
-PASS_WARNING_WINDOW = 180  # seconds before passing to take over the screen
+PASS_WARNING_WINDOW = 30  # seconds before passing to take over the screen
 PASS_WARNING_GRACE = 30   # keep showing briefly as it passes
 PASS_WARNING_HOLD = 120  # keep showing after it drops off the board feed,
                          # so the warning stays up until it has passed

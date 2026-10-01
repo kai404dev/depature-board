@@ -4,11 +4,12 @@ Live departure board for three chained RGB LED panels on a Raspberry Pi,
 driven by [peakraildepartures.com](https://peakraildepartures.com).
 Two pages cycle on the panels: the departures board and a train
 formation diagram (the next-departure-big page 2 is disabled by
-default — re-enable with `--pages 1,2,3`). A non-stopping service
-shows "This service does not stop here" instead of calling-at points,
-and the formation page is skipped while the lead service is passing.
+default — re-enable with `--pages 1,2,3`). The page indicator counts
+position in the cycle, so page 3 of `[1, 3]` shows `2/2`. Only
+stopping services appear on the pages; a non-stopping service shows
+nothing (its stand-back warning still takes over as below).
 Within the warning window (`--passing-warning-time`, seconds, default
-180) of passing through it takes over the whole screen with a bordered
+30) of passing through it takes over the whole screen with a bordered
 stand-back warning (fast-train approaching, stand back from the edge,
 hold pushchairs/wheelchairs, stand behind the yellow line). The warning
 is latched so it stays up until the train has passed, even if the
@@ -56,6 +57,16 @@ operator, and heritage railways not at all):
 Without a token, or where Darwin has no data, the diagram silently
 keeps its defaults. Darwin takes over no other display data —
 times, calling points and statuses stay on RTT.
+
+If the journal shows `Darwin loading lookup failed: HTTP Error 401`,
+Darwin rejected the token. Check: the token must be the LDBWS token
+from `opendata.nationalrail.co.uk` (My Account area) — not your
+account password and not a Rail Data Marketplace key. At startup the
+board logs where it found the token, e.g.
+`Darwin loadings enabled (token from .env, 48 chars)` — if it says
+`from environment` while you edited `.env`, an old exported variable
+is winning. `.env` lines look like `DARWIN_TOKEN=abc123` (quotes and
+trailing `# comments` are fine).
 
 ## Pi setup
 

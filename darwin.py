@@ -33,13 +33,20 @@ import xml.etree.ElementTree as ET
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 
 ENDPOINT = ("https://realtime.nationalrail.co.uk:443/OpenLDBWS/ldb12.asmx")
+LDB_NS = "http://thalesgroup.com/RTTI/2021-11-01/ldb/"
+TOKEN_NS = "http://thalesgroup.com/RTTI/2013-11-28/Token/types"
 ACT_BOARD = ("http://thalesgroup.com/RTTI/2012-01-13/ldb/GetDepartureBoard")
 ACT_DETAILS = ("http://thalesgroup.com/RTTI/2012-01-13/ldb/GetServiceDetails")
+
+TOKEN_KEYS = ("DARWIN_TOKEN", "DARWIN_API_TOKEN")
 
 DEBUG = False
 
 BOARD_TTL = 60
 DETAILS_TTL = 180
+
+# Repeat Darwin error lines at most this often (enrich runs every fetch).
+ERR_REPEAT_SECS = 600
 
 # How far a Darwin std may sit from the RTT scheduled time and still
 # count as the same service.
@@ -47,8 +54,11 @@ STD_TOLERANCE_MIN = 3
 
 _D = {
     "token": "",
+    "source": "",
     "board_cache": {},    # crs -> (at, services or None)
     "details_cache": {},  # service_id -> (at, formation or None)
+    "last_err": "",
+    "last_err_at": 0.0,
 }
 
 
@@ -59,7 +69,8 @@ def _debug(message):
 
 
 def _read_dotenv(path):
-    """Tiny .env parser: KEY=value, optional 'export ', quotes, # comments."""
+    """Tiny .env parser: KEY=value, optional 'export ', quotes, #
+    comments (full-line and trailing ' #...')."""
     out = {}
     try:
         with open(path) as f:
@@ -70,31 +81,72 @@ def _read_dotenv(path):
                 if line.startswith("export "):
                     line = line[7:].lstrip()
                 k, v = line.split("=", 1)
+                k = k.strip()
                 v = v.strip()
-                if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
-                    v = v[1:-1]
-                out[k.strip()] = v
+                if not k:
+                    continue
+                if v and v[0] in "\"'":
+                    # quoted: take what's inside, ignore the rest
+                    # (e.g. TOKEN="abc" # my token)
+                    end = v.find(v[0], 1)
+                    v = v[1:end] if end != -1 else v[1:]
+                else:
+                    # trailing comment, e.g. TOKEN=abc # my token
+                    if " #" in v:
+                        v = v.split(" #", 1)[0].rstrip()
+                    v = v.strip()
+                out[k] = v
     except OSError:
         pass
     return out
 
 
+def _first(d, keys):
+    for k in keys:
+        if d.get(k, "").strip():
+            return d[k].strip()
+    return ""
+
+
 def load_token():
-    """Token from environment, .env, then darwin_token.txt."""
-    if os.environ.get("DARWIN_TOKEN", "").strip():
-        return os.environ["DARWIN_TOKEN"].strip()
-    env = _read_dotenv(os.path.join(THIS_DIR, ".env"))
-    if env.get("DARWIN_TOKEN", "").strip():
-        return env["DARWIN_TOKEN"].strip()
+    """Token from environment, .env, then darwin_token.txt.
+
+    Remembers where it came from (see token_info). Accepts
+    DARWIN_TOKEN or DARWIN_API_TOKEN.
+    """
+    _D["source"] = ""
+    tok = _first(os.environ, TOKEN_KEYS)
+    if tok:
+        _D["source"] = "environment"
+        return tok
+    tok = _first(_read_dotenv(os.path.join(THIS_DIR, ".env")), TOKEN_KEYS)
+    if tok:
+        _D["source"] = ".env"
+        return tok
     try:
         with open(os.path.join(THIS_DIR, "darwin_token.txt")) as f:
-            return f.read().strip()
+            tok = f.read().strip()
     except OSError:
-        return ""
+        tok = ""
+    if tok:
+        _D["source"] = "darwin_token.txt"
+    return tok
+
+
+def token_info():
+    """(source, length) of the loaded token for startup diagnostics.
+
+    The value itself is never logged.
+    """
+    return _D["source"] or "none", len(_D["token"])
 
 
 def set_token(token):
     _D["token"] = (token or "").strip()
+    if _D["token"] and not _D["source"]:
+        _D["source"] = "set directly"
+    if not _D["token"]:
+        _D["source"] = ""
     _D["board_cache"] = {}
     _D["details_cache"] = {}
 
@@ -145,15 +197,15 @@ def _soap(action, operation, params_xml, timeout=12):
         '<?xml version="1.0" encoding="utf-8"?>'
         '<soap:Envelope '
         'xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" '
-        'xmlns:typ="http://thalesgroup.com/RTTI/2021-11-01/ldb/types" '
-        'xmlns:tok="http://thalesgroup.com/RTTI/2013-11-28/Token/types">'
+        'xmlns:ldb="' + LDB_NS + '" '
+        'xmlns:tok="' + TOKEN_NS + '">'
         "<soap:Header>"
         '<tok:AccessToken><tok:TokenValue>' + _xml_escape(token) +
         "</tok:TokenValue></tok:AccessToken>"
         "</soap:Header>"
         "<soap:Body>"
-        "<typ:" + operation + ">" + params_xml +
-        "</typ:" + operation + ">"
+        "<ldb:" + operation + ">" + params_xml +
+        "</ldb:" + operation + ">"
         "</soap:Body></soap:Envelope>"
     )
     data = envelope.encode("utf-8")
@@ -255,9 +307,9 @@ def get_board(crs, rows=10, window=120):
     if hit and now - hit[0] < BOARD_TTL and hit[1] is not None:
         _debug(f"BOARD CACHE HIT {crs}")
         return hit[1]
-    params = (f"<typ:numRows>{int(rows)}</typ:numRows>"
-              f"<typ:crs>{_xml_escape(crs)}</typ:crs>"
-              f"<typ:timeWindow>{int(window)}</typ:timeWindow>")
+    params = (f"<ldb:numRows>{int(rows)}</ldb:numRows>"
+              f"<ldb:crs>{_xml_escape(crs)}</ldb:crs>"
+              f"<ldb:timeWindow>{int(window)}</ldb:timeWindow>")
     root = _soap(ACT_BOARD, "GetDepartureBoardRequest", params)
     services = []
     for elem in root.iter():
@@ -286,7 +338,7 @@ def get_details_formation(service_id):
     if hit and now - hit[0] < DETAILS_TTL:
         _debug("DETAILS CACHE HIT")
         return hit[1]
-    params = (f"<typ:serviceID>{_xml_escape(service_id)}</typ:serviceID>")
+    params = (f"<ldb:serviceID>{_xml_escape(service_id)}</ldb:serviceID>")
     try:
         root = _soap(ACT_DETAILS, "GetServiceDetailsRequest", params)
     except Exception as e:
@@ -484,5 +536,11 @@ def enrich_loading(dep, station_crs):
         return False
     except Exception as e:
         _debug(f"enrich_loading failed: {e}")
-        print(f"Darwin loading lookup failed: {e}", file=sys.stderr)
+        # Throttled: enrichment runs every fetch, so only repeat a
+        # recurring error occasionally (or when it changes).
+        now = time.time()
+        msg = str(e)
+        if msg != _D["last_err"] or now - _D["last_err_at"] > ERR_REPEAT_SECS:
+            _D["last_err"], _D["last_err_at"] = msg, now
+            print(f"Darwin loading lookup failed: {e}", file=sys.stderr)
         return False

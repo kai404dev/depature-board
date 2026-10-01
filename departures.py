@@ -486,6 +486,10 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     # passed, even if it drops off the board feed first.
     warn_latch = None
     warned_before = False
+    # Display list, refreshed every frame: stopping services only.
+    # Passing services never appear on the pages (the warning still
+    # watches the full board).
+    showing = []
 
     control_path = os.path.join(THIS_DIR, "control.json")
 
@@ -575,9 +579,14 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         return s, fnt, resolve_x(spec["x"], w, width), w
 
     def page_label_geom(page):
-        """Measure the page indicator without drawing it."""
+        """Measure the page indicator without drawing it.
+
+        Numbered by position in the cycle (page 3 of [1, 3] shows
+        2/2), falling back to the page id when holding a page outside
+        the cycle."""
         spec = L["page_num"]
-        lab = f"{page}/{len(pages_now)}"
+        pos = pages_now.index(page) + 1 if page in pages_now else page
+        lab = f"{pos}/{len(pages_now)}"
         fnt = F[spec["font"]]
         w = text_width(graphics, offscreen, fnt, C["text"], lab)
         return lab, fnt, resolve_x(spec["x"], w, width), w, \
@@ -925,9 +934,10 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
 
     def draw_static(page, frac):
         # Lead service + calling-at, then compact rows on a fixed pitch.
-        # All positions from layout/page1.json.
+        # All positions from layout/page1.json. Stopping services only
+        # (see showing); passing services never reach the pages.
         P1 = L["page1"]
-        rows = board[:args.limit]
+        rows = showing[:args.limit]
         if not rows:
             return
         seg = {k: C[v] for k, v in P1["segments"].items()}
@@ -1037,24 +1047,17 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 warn_latch = None
 
         # --- page selection ------------------------------------------
-        # A formation diagram is meaningless for a train that does not
-        # stop: while the lead service is passing, page 3 leaves the
-        # cycle (never go blank -- fall back to the board). Previews
-        # (--once, one explicit page) always render what was asked for.
-        if (board and not getattr(args, "once", False)
-                and is_passing_service(board[0])):
-            pages_now = [p for p in args.pages if p != 3] or [1]
-        else:
-            pages_now = list(args.pages)
+        # The pages show stopping services only; passing services are
+        # hidden (their warning still watches the full board above).
+        # Previews (--once, one explicit page) always render what was
+        # asked for.
+        showing = [d for d in board if not is_passing_service(d)]
+        pages_now = list(args.pages)
         held = paused in (1, 2, 3) and not getattr(
             args, "ignore_control", False)
         if held:
-            if paused == 3 and 3 not in pages_now:
-                # held formation page suppressed while the lead passes
-                cur_page = pages_now[0]
-            else:
-                # held from the web UI (control.json): stay put
-                cur_page = paused
+            # held from the web UI (control.json): stay put
+            cur_page = paused
             was_held = True
         else:
             if was_held or (warned_before and passing is None):
@@ -1100,21 +1103,21 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 print(f"passing warning: {t} {dest}",
                       file=sys.stderr, flush=True)
             draw_passing_warning(passing)
-        elif not board:
+        elif not showing:
             graphics.DrawText(offscreen, F["top"], 2, 1 + F["top"].baseline,
                               C["alert"], f"No departures [{source.upper()}]")
             draw_page_chrome(cur_page, frac)
         elif cur_page == 2:
-            draw_page2(board[0], cur_page, frac)
+            draw_page2(showing[0], cur_page, frac)
         elif cur_page == 3:
-            draw_page3(board[0], cur_page, frac)
+            draw_page3(showing[0], cur_page, frac)
         elif args.layout == "static":
             draw_static(cur_page, frac)
         else:
-            if len(board) > 1 and now - idx_since >= args.rotate_seconds:
-                idx = (idx + 1) % len(board)
+            if len(showing) > 1 and now - idx_since >= args.rotate_seconds:
+                idx = (idx + 1) % len(showing)
                 idx_since = now
-            draw_full(board[idx % len(board)], 0)
+            draw_full(showing[idx % len(showing)], 0)
             draw_page_chrome(cur_page, frac)
 
         offscreen = matrix.SwapOnVSync(offscreen)
@@ -1155,7 +1158,7 @@ def main():
     p.add_argument("--passing-warning-time", type=float,
                    default=PASS_WARNING_WINDOW,
                    help="Seconds before a passing train to show the "
-                        "fullscreen stand-back warning (default 180). "
+                        "fullscreen stand-back warning (default 30). "
                         "While the lead service is passing, page 3 "
                         "(formation) is skipped.")
     p.add_argument("--mock", action="store_true",
@@ -1225,8 +1228,13 @@ def main():
                  "departures.py (or set $RTT_TOKEN / rtt_token.txt)")
     import darwin
     darwin.set_token(darwin.load_token())  # optional: carriage loadings
+    src, nchars = darwin.token_info()
     if darwin.configured():
-        print("Darwin loadings enabled", file=sys.stderr, flush=True)
+        print(f"Darwin loadings enabled (token from {src}, "
+              f"{nchars} chars)", file=sys.stderr, flush=True)
+    else:
+        print("Darwin loadings off (no token: set $DARWIN_TOKEN, "
+              ".env, or darwin_token.txt)", file=sys.stderr, flush=True)
 
     def get_board_data(source=None):
         if (source or args.source) == "rtt":
@@ -1265,8 +1273,9 @@ def main():
               f"{args.rtt_station if args.source == 'rtt' else args.railway + '/' + args.station} "
               f"date={args.date or 'live'}")
         print(format_console(board))
-        if 2 in args.pages and board:
-            d = board[0]
+        stopping = [d for d in board if not is_passing_service(d)]
+        if 2 in args.pages and stopping:
+            d = stopping[0]
             t, dest, status, raw = format_departure(d)
             print("--- page 2 ---")
             print(f"{t} {dest}")
@@ -1281,8 +1290,8 @@ def main():
                 notes = [d["calling_at"]]
             for n in notes[:2]:
                 print(f"  {n}")
-        if 3 in args.pages and board and not is_passing_service(board[0]):
-            d = board[0]
+        if 3 in args.pages and stopping:
+            d = stopping[0]
             t, dest, _, _ = format_departure(d)
             cars, label = formation_of(
                 d, default_cars=L["page3"]["coach"]["default_coaches"])
