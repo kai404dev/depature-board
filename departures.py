@@ -604,15 +604,36 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         graphics.DrawText(offscreen, fnt, 1 + w_time, y_base,
                           seg["destination"], dest)
 
+    scroll_w = {}
+
     def draw_calling(dep, spec, y_base):
-        """Calling-at line, static (truncated to fit)."""
-        if dep.get("calling_at"):
-            fnt = F[spec["font"]]
-            col = C[spec["color"]]
-            graphics.DrawText(offscreen, fnt, resolve_x(spec["x"], 0, width),
-                              y_base, col,
-                              fit_text(graphics, offscreen, fnt, col,
-                                       dep["calling_at"], width - 2))
+        """Calling-at line: static if it fits, otherwise pause, then
+        scroll left on a loop like a real board."""
+        text = dep.get("calling_at")
+        if not text:
+            return
+        fnt = F[spec["font"]]
+        col = C[spec["color"]]
+        key = (spec["font"], text)
+        tw = scroll_w.get(key)
+        if tw is None:
+            if len(scroll_w) > 20:
+                scroll_w.clear()
+            tw = scroll_w[key] = text_width(graphics, offscreen, fnt,
+                                            col, text)
+        if tw <= width - 2:
+            graphics.DrawText(offscreen, fnt,
+                              resolve_x(spec["x"], tw, width),
+                              y_base, col, text)
+            return
+        gap, pause, speed = 48, 2.5, 24.0   # px, seconds, px/second
+        period = tw + gap
+        t = time.time() % (pause + period / speed)
+        off = 0 if (t < pause or preview_frac is not None) \
+            else int((t - pause) * speed)
+        graphics.DrawText(offscreen, fnt, 1 - off, y_base, col, text)
+        graphics.DrawText(offscreen, fnt, 1 - off + period, y_base, col,
+                          text)
 
     def draw_full(dep, y0):
         """One departure in full detail, starting at vertical offset y0."""
@@ -670,7 +691,8 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 cap = min(cap, clock_x - 3)
             graphics.DrawText(offscreen, nfont, 1, y3, ncol,
                               fit_text(graphics, offscreen, nfont, ncol,
-                                       notes[0], max(0, cap)))
+                                      notes[int(time.time() // 4)
+                                             % len(notes)], max(0, cap)))
         graphics.DrawText(offscreen, clock_fnt, clock_x,
                           resolve_y(L["clock"]["y"], height),
                           C[L["clock"]["color"]], clock_s)
