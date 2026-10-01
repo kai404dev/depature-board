@@ -42,7 +42,7 @@ RTT_BASE = "https://data.rtt.io"
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 TOKEN_FILE = os.path.join(THIS_DIR, "rtt_token.txt")
 
-DEBUG = True
+DEBUG = False
 
 REVERSE_FORMATION = False
 
