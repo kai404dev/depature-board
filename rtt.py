@@ -944,15 +944,18 @@ def _to_departure(svc, now):
         else scheduled_ts
     )
 
+    expected_raw = (
+        dep.get("realtimeActual")
+        or dep.get("realtimeForecast")
+        or dep.get("realtimeEstimate")
+        or sched_s
+    )
+    expected_hhmm = _hhmm(expected_raw)
+
     _debug(
         f"ACCEPT {identity}/{headcode}: "
         f"scheduled={hhmm} "
-        f"expected={_hhmm("
-        f"dep.get('realtimeActual') "
-        f"or dep.get('realtimeForecast') "
-        f"or dep.get('realtimeEstimate') "
-        f"or sched_s"
-        f")} "
+        f"expected={expected_hhmm} "
         f"delay={mins} "
         f"cancelled={cancelled} "
         f"platform={platform} "
