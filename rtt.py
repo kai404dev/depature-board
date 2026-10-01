@@ -1463,6 +1463,8 @@ def fetch_departures(
         departures,
         start=1,
     ):
+        expected_hhmm = _hhmm_from_timestamp(d.get("_expected_ts"))
+
         _debug(
             f"RESULT {index}: "
             f"{d.get('scheduled_time')} "
@@ -1471,10 +1473,7 @@ def fetch_departures(
             f"platform={d.get('platform')} "
             f"delay={d.get('delay_minutes')} "
             f"cancelled={d.get('is_cancelled')} "
-            f"expected="
-            f"{_hhmm_from_timestamp("
-            f"d.get('_expected_ts')"
-            f")}"
+            f"expected={expected_hhmm}"
         )
 
     return departures
