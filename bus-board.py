@@ -188,7 +188,18 @@ def load_fonts(graphics, route_scale=2):
         f = graphics.Font()
         f.LoadFont(scale_bdf(base, s))
         F[f"dest{s}"] = f
+    # one step smaller route for long numbers (>4 chars)
+    small = max(1, route_scale - 1)
+    path = find_font(FONTS["route"])
+    if small != 1:
+        path = scale_bdf(path, small)
+    f = graphics.Font()
+    f.LoadFont(path)
+    F["route_sm"] = f
     return F
+
+
+ROUTE_SHRINK_AFTER = 4  # route numbers longer than this drop one size
 
 
 def scale_bdf(src, scale):
@@ -361,9 +372,17 @@ def run_board(args, services):
         # route width claims the left of the panel; dest/via share the
         # cell to its right. Scrolling rows are painted first, the
         # route last, so scroll edge-blanking can never chew into it.
+        # Numbers longer than ROUTE_SHRINK_AFTER chars drop one size
+        # so they still fit, keeping their own vertical centring.
         w_route = 0
+        rfont, ry = F["route"], route_y
         if route:
-            w_route = text_width(graphics, offscreen, F["route"],
+            if len(route) > ROUTE_SHRINK_AFTER:
+                small = max(1, args.route_scale - 1)
+                rfont = F["route_sm"]
+                ry = dest_baseline(small) if args.main_y is None \
+                    else route_y
+            w_route = text_width(graphics, offscreen, rfont,
                                  C["route"], route)
         cell_x0 = 1 if not route else 1 + w_route + args.gap
         if via:
@@ -391,7 +410,7 @@ def run_board(args, services):
             draw_scroll(fnt, C["dest"], dest, y, W - 1,
                         xspec="center", x0=cell_x0, x1=W - 1)
         if route:
-            graphics.DrawText(offscreen, F["route"], 1, route_y,
+            graphics.DrawText(offscreen, rfont, 1, ry,
                               C["route"], route)
 
     while True:
