@@ -485,6 +485,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                       "Run with --led-no-drop-privs or fix permissions.",
                       file=sys.stderr, flush=True)
             paused_page = None
+            ctl_source = None 
             control_mt = -1
             return paused_page
         if mt != control_mt:
