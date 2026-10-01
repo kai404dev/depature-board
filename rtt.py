@@ -1471,6 +1471,8 @@ def fetch_departures(
             params,
         )
 
+        print(data)
+
     except urllib.error.HTTPError as e:
         if (
             e.code in (
