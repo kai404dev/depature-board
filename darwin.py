@@ -644,6 +644,31 @@ def main():
         print(f"{s['std']} {s['operator']} -> {s['dest_name']} "
               f"plat {s['platform']} [{detail}]")
 
+    # Formation also lives in two other spots. Probe them so a blank
+    # board above can be told apart from "no data right now".
+    base = _D["endpoint"][0] if _D["endpoint"] else base_url()
+    crs = args.crs.strip().upper()
+    try:
+        basic = _get_raw(base, f"GetDepartureBoard/{crs}",
+                         {"numRows": 10, "timeWindow": 120})
+        n_basic = sum(
+            1 for s in basic.get("trainServices") or []
+            if isinstance(s, dict) and s.get("formation"))
+        print(f"basic board: {n_basic} of "
+              f"{len(basic.get('trainServices') or [])} with formation")
+    except Exception as e:
+        print(f"basic board probe failed: {e}")
+    n_det = 0
+    for s in services:
+        if not s.get("service_id"):
+            continue
+        try:
+            if get_details_formation(s["service_id"]) is not None:
+                n_det += 1
+        except Exception:
+            pass
+    print(f"service details: {n_det} of {len(services)} with formation")
+
 
 if __name__ == "__main__":
     main()
