@@ -26,6 +26,8 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
+import darwin
+
 try:
     from zoneinfo import ZoneInfo
 
@@ -1805,6 +1807,10 @@ def enrich(
                 svc,
                 station,
             )
+
+        # Darwin carriage loadings for the page-3 diagram (no-op
+        # without a Darwin token; skipped for passing services).
+        darwin.enrich_loading(d, station)
 
     return deps
 

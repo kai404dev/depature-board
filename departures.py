@@ -752,11 +752,15 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                                    C[P3["header"]["dest_color"]], dest,
                                    width - w_time - 1))
 
-        # coach cards row
+        # coach cards row (cards shrink to fit real formations --
+        # Darwin reports 9/11-car sets, which never fit full width)
         margin, gap_b, bh, slant = (
             P3["coach"]["margin"], P3["coach"]["gap"],
             P3["coach"]["height"], P3["coach"]["slant"])
         bw = P3["coach"]["width"]
+        if n > 0:
+            bw = max(10, min(
+                bw, (width - 2 * margin - (n - 1) * gap_b) // n))
         outline = C[P3["coach"]["outline"]]
         fill = C[P3["coach"]["fill"]]
         tfont = F["tiny"]
@@ -1193,6 +1197,10 @@ def main():
     if args.source == "rtt" and not token:
         sys.exit("RTT needs a token: put RTT_TOKEN=... in .env next to "
                  "departures.py (or set $RTT_TOKEN / rtt_token.txt)")
+    import darwin
+    darwin.set_token(darwin.load_token())  # optional: carriage loadings
+    if darwin.configured():
+        print("Darwin loadings enabled", file=sys.stderr, flush=True)
 
     def get_board_data(source=None):
         if (source or args.source) == "rtt":

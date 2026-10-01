@@ -38,6 +38,25 @@ tweaks reach the real LEDs within about a second, no restart.
 `--preview` prints a to-scale ASCII map of every page with element
 bounds and overlap warnings — the fastest way to check spacing.
 
+## Carriage loadings (Darwin, RTT mode only)
+
+RTT's Know Your Train gives coach count and facilities but no seating
+availability. The page-3 fill levels come from National Rail Darwin
+(LDBWS), which publishes per-coach loadings (0–100) wherever the train
+operator feeds them in (e.g. Avanti, CrossCountry — but not every
+operator, and heritage railways not at all):
+
+1. Register free at `opendata.nationalrail.co.uk` and get an LDBWS token.
+2. Put `DARWIN_TOKEN=...` in `.env` next to `departures.py`
+   (or set `$DARWIN_TOKEN` / create `darwin_token.txt`).
+3. Run with `--source rtt`. The board matches each RTT departure to
+   Darwin by scheduled time + operator + destination at the same
+   station and fills the formation cars with the real loadings.
+
+Without a token, or where Darwin has no data, the diagram silently
+keeps its defaults. Darwin takes over no other display data —
+times, calling points and statuses stay on RTT.
+
 ## Pi setup
 
 ```bash

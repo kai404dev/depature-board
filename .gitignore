@@ -1,3 +1,6 @@
 __pycache__/
 layout.tmp/
 layout/local.json
+.env
+rtt_token.txt
+darwin_token.txt
