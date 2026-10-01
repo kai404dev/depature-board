@@ -48,8 +48,9 @@ operator feeds them in (e.g. Avanti, CrossCountry — but not every
 operator, and heritage railways not at all):
 
 1. Register at `raildata.org.uk` (consumer access is enough) and
-   subscribe to the **Live Departure Board** product (free, approved
-   immediately).
+   subscribe to a Live Departure Board product — departures-only or
+   arrivals+departures, both work with no extra configuration (free,
+   approved immediately).
 2. Open the product → **Specification** tab → copy the **Consumer key**.
 3. Put `DARWIN_TOKEN=<consumer key>` in `.env` next to
    `departures.py` (or set `$DARWIN_TOKEN` / create
@@ -64,7 +65,9 @@ times, calling points and statuses stay on RTT.
 
 If your product's API path differs from the default (compare the
 **Try it** URL on RDM with the `base:` line from the test below),
-set `DARWIN_BASE_URL=...` the same way.
+set `DARWIN_BASE_URL=...` the same way. The board also negotiates
+across every known LDBWS product path and board operation by itself,
+so it usually just works.
 
 Test it directly on the Pi (never prints the key itself):
 

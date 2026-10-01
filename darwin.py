@@ -11,14 +11,17 @@ one RTT departure (scheduled time + operator + destination) and merges
 the loadings into the departure's formation cars as capacity 0..1,
 which is exactly what the page-3 diagram renders.
 
-Access is via the Rail Data Marketplace: subscribe (free) to the
-"Live Departure Board" product and use its Consumer key:
+Access is via the Rail Data Marketplace: subscribe (free) to a Live
+Departure Board product (departures-only or arrivals+departures) and
+use its Consumer key:
   DARWIN_TOKEN=... in the environment, in .env, or in darwin_token.txt
 next to this file. Without a key every function here degrades to a
 no-op and the board keeps its default loadings.
 
-If your product's API path differs from the default below (see its
-"Try it" URL on RDM), set DARWIN_BASE_URL to match.
+The working product path and board operation are negotiated
+automatically across every known LDBWS product, so no URL
+configuration is needed. If your product uses a new path, set
+DARWIN_BASE_URL to its "Try it" base.
 
 Pure standard library. No hardware needed.
 
@@ -41,6 +44,29 @@ THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 DEFAULT_BASE_URL = ("https://api1.raildata.org.uk"
                     "/1010-live-departure-board-dep1_2"
                     "/LDBWS/api/20220120")
+
+# All known Live Departure Board product paths. The first reachable one
+# wins (cached for the session), so any subscribed LDBWS product works
+# with no configuration -- including the arrivals+departures board.
+BASE_CANDIDATES = (
+    "https://api1.raildata.org.uk"
+    "/1010-live-departure-board-dep1_2"
+    "/LDBWS/api/20220120",
+    "https://api1.raildata.org.uk"
+    "/1010-live-departure-board-dep"
+    "/LDBWS/api/20220120",
+    "https://api1.raildata.org.uk"
+    "/1010-live-arrival-and-departure-boards-arr-and-dep1_1"
+    "/LDBWS/api/20220120",
+)
+
+# Board operations to try, richest first. WithDetails boards carry
+# calling points inline; the basic board still carries formation.
+OP_CANDIDATES = (
+    "GetDepBoardWithDetails",
+    "GetArrDepBoardWithDetails",
+    "GetDepartureBoard",
+)
 BASE_KEYS = ("DARWIN_BASE_URL",)
 
 TOKEN_KEYS = ("DARWIN_TOKEN", "DARWIN_API_TOKEN")
@@ -61,6 +87,7 @@ _D = {
     "token": "",
     "source": "",
     "base_url": "",
+    "endpoint": None,     # resolved (base, operation), cached
     "board_cache": {},    # crs -> (at, services or None)
     "details_cache": {},  # service_id -> (at, formation or None)
     "last_err": "",
@@ -191,63 +218,61 @@ def token_warning():
 # REST
 # ---------------------------------------------------------------------------
 
-def _alt_base(url):
-    """The other known product path, for 404 fallback."""
-    if "live-departure-board-dep1_2" in url:
-        return url.replace("live-departure-board-dep1_2",
-                           "live-departure-board-dep")
-    if "live-departure-board-dep" in url:
-        return url.replace("live-departure-board-dep",
-                           "live-departure-board-dep1_2")
-    return ""
+class _NotFound(RuntimeError):
+    """A 404 from the API: wrong product path or operation, try the next."""
 
 
-def _get(path, params=None, timeout=12):
-    """GET one REST resource, trying the alternate product path on 404.
+def _candidate_bases():
+    """Explicit DARWIN_BASE_URL first, then every known product path."""
+    out = []
+    if base_url() not in BASE_CANDIDATES:
+        out.append(base_url())
+    for b in BASE_CANDIDATES:
+        if b not in out:
+            out.append(b)
+    return out
 
-    Returns parsed JSON. Raises RuntimeError with the status and a
-    snippet of the body on failure.
+
+def _get_raw(base, path, params=None, timeout=12):
+    """GET one REST resource. Returns parsed JSON.
+
+    Raises _NotFound on 404, RuntimeError otherwise.
     """
-    bases = [base_url()]
-    alt = _alt_base(bases[0])
-    if alt and alt != bases[0]:
-        bases.append(alt)
-    last = None
-    for base in bases:
-        url = base + "/" + path.lstrip("/")
-        if params:
-            qs = urllib.parse.urlencode(
-                {k: v for k, v in params.items() if v is not None})
-            if qs:
-                url += "?" + qs
-        req = urllib.request.Request(
-            url, headers={"Accept": "application/json",
-                          "x-apikey": _D["token"],
-                          "User-Agent": "departure-display/1.0"})
-        _debug(f"GET {path} base={base}")
+    url = base.rstrip("/") + "/" + path.lstrip("/")
+    if params:
+        qs = urllib.parse.urlencode(
+            {k: v for k, v in params.items() if v is not None})
+        if qs:
+            url += "?" + qs
+    req = urllib.request.Request(
+        url, headers={"Accept": "application/json",
+                      "x-apikey": _D["token"],
+                      "User-Agent": "departure-display/1.0"})
+    _debug(f"GET {path} base={base}")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read()
+    except urllib.error.HTTPError as e:
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                body = resp.read()
-        except urllib.error.HTTPError as e:
-            try:
-                detail = e.read().decode("utf-8", "replace")[:200]
-            except Exception:
-                detail = ""
-            hint = ""
-            if e.code == 401:
-                hint = (" (check the RDM consumer key, and that "
-                        "DARWIN_BASE_URL matches your product's Try-it URL)")
-            last = RuntimeError(
-                f"Darwin REST {e.code} {e.reason}: {detail}{hint}")
-            _debug(f"{path} -> HTTP {e.code} on {base}")
-            if e.code == 404 and base != bases[-1]:
-                continue  # wrong product path? try the other one
-            raise last
-        try:
-            return json.loads(body.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError) as e:
-            raise RuntimeError(f"Darwin returned non-JSON ({e})")
-    raise last
+            detail = e.read().decode("utf-8", "replace")[:200]
+        except Exception:
+            detail = ""
+        if e.code == 404:
+            _debug(f"{path} -> HTTP 404 on {base}")
+            raise _NotFound(f"Darwin REST 404 on {base}/{path}")
+        hint = ""
+        if e.code == 401:
+            hint = (" (check the RDM consumer key, and that "
+                    "DARWIN_BASE_URL matches your product's Try-it URL)")
+        raise RuntimeError(
+            f"Darwin REST {e.code} {e.reason}: {detail}{hint}")
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as e:
+        raise RuntimeError(f"Darwin returned non-JSON ({e})")
+    if not isinstance(data, dict):
+        raise RuntimeError("Darwin returned an unexpected shape")
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +341,12 @@ def _parse_service(svc):
 
 
 def get_board(crs, rows=10, window=120):
-    """Darwin departures for a CRS code. Cached BOARD_TTL seconds."""
+    """Darwin departures for a CRS code. Cached BOARD_TTL seconds.
+
+    The working (base, operation) is negotiated once across every
+    known LDBWS product path, so departures-only and
+    arrivals+departures products both work unconfigured.
+    """
     crs = (crs or "").strip().upper()
     if not crs:
         return []
@@ -325,19 +355,34 @@ def get_board(crs, rows=10, window=120):
     if hit and now - hit[0] < BOARD_TTL and hit[1] is not None:
         _debug(f"BOARD CACHE HIT {crs}")
         return hit[1]
-    data = _get(f"GetDepartureBoard/{urllib.parse.quote(crs, safe='')}",
-                {"numRows": int(rows), "timeWindow": int(window)})
-    if not isinstance(data, dict):
-        raise RuntimeError("Darwin returned an unexpected board shape")
-    services = [_parse_service(s) for s in
-                data.get("trainServices") or []]
-    _debug(f"BOARD {crs}: {len(services)} services")
-    _D["board_cache"][crs] = (now, services)
-    if len(_D["board_cache"]) > 20:
-        oldest = min(_D["board_cache"],
-                     key=lambda k: _D["board_cache"][k][0])
-        del _D["board_cache"][oldest]
-    return services
+    params = {"numRows": int(rows), "timeWindow": int(window)}
+    path_crs = urllib.parse.quote(crs, safe="")
+    last = None
+    if _D["endpoint"]:
+        bases_ops = [_D["endpoint"]]
+    else:
+        bases_ops = [(b, op) for b in _candidate_bases()
+                     for op in OP_CANDIDATES]
+    for base, op in bases_ops:
+        try:
+            data = _get_raw(base, f"{op}/{path_crs}", params)
+        except _NotFound as e:
+            last = e
+            continue
+        if _D["endpoint"] != (base, op):
+            _D["endpoint"] = (base, op)
+            _debug(f"ENDPOINT {op} on {base}")
+            print(f"Darwin endpoint: {op} on {base}", file=sys.stderr)
+        services = [_parse_service(s) for s in
+                    data.get("trainServices") or []]
+        _debug(f"BOARD {crs}: {len(services)} services")
+        _D["board_cache"][crs] = (now, services)
+        if len(_D["board_cache"]) > 20:
+            oldest = min(_D["board_cache"],
+                         key=lambda k: _D["board_cache"][k][0])
+            del _D["board_cache"][oldest]
+        return services
+    raise last or RuntimeError("no reachable Darwin board endpoint")
 
 
 def get_details_formation(service_id):
@@ -350,13 +395,14 @@ def get_details_formation(service_id):
         _debug("DETAILS CACHE HIT")
         return hit[1]
     try:
-        data = _get("GetServiceDetails/"
-                    f"{urllib.parse.quote(service_id, safe='')}")
+        base = _D["endpoint"][0] if _D["endpoint"] else base_url()
+        data = _get_raw(base, "GetServiceDetails/"
+                        f"{urllib.parse.quote(service_id, safe='')}")
     except Exception as e:
         _debug(f"details failed: {e}")
         _D["details_cache"][service_id] = (now, None)
         return None
-    formation = _parse_formation((data or {}).get("formation"))
+    formation = _parse_formation(data.get("formation"))
     _D["details_cache"][service_id] = (now, formation)
     return formation
 
@@ -583,6 +629,8 @@ def main():
         services = get_board(args.crs.strip().upper(), rows=10, window=120)
     except Exception as e:
         sys.exit(f"board fetch failed: {e}")
+    if _D["endpoint"]:
+        print(f"endpoint: {_D['endpoint'][1]} on {_D['endpoint'][0]}")
     print(f"{len(services)} services at {args.crs.strip().upper()}")
     for s in services:
         form = s.get("formation")
