@@ -606,6 +606,36 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
 
     scroll_w = {}
 
+    def draw_scroll(fnt, col, text, y_base, max_x, xspec="left"):
+        """Static if it fits within max_x, otherwise pause then loop-scroll
+        left. Anything right of max_x on the text row is blanked, so draw
+        whatever shares the row (clock, page number) AFTER calling this."""
+        key = (id(fnt), text)
+        tw = scroll_w.get(key)
+        if tw is None:
+            if len(scroll_w) > 20:
+                scroll_w.clear()
+            tw = scroll_w[key] = text_width(graphics, offscreen, fnt,
+                                            col, text)
+        if tw <= max_x - 1:
+            graphics.DrawText(offscreen, fnt, resolve_x(xspec, tw, width),
+                              y_base, col, text)
+            return
+        gap, pause, speed = 48, 2.5, 24.0   # px, seconds, px/second
+        period = tw + gap
+        t = time.time() % (pause + period / speed)
+        off = 0 if (t < pause or preview_frac is not None) \
+            else int((t - pause) * speed)
+        graphics.DrawText(offscreen, fnt, 1 - off, y_base, col, text)
+        graphics.DrawText(offscreen, fnt, 1 - off + period, y_base, col,
+                          text)
+        top = y_base - fnt.baseline
+        for yy in range(max(0, top), min(height, top + fnt.height)):
+            offscreen.SetPixel(0, yy, 0, 0, 0)
+            for xx in range(max(0, max_x + 1), width):
+                offscreen.SetPixel(xx, yy, 0, 0, 0)
+
+
     def draw_calling(dep, spec, y_base):
         """Calling-at line: static if it fits, otherwise pause, then
         scroll left on a loop like a real board."""
