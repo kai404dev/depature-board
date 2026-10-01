@@ -63,6 +63,33 @@ Without a key, or where Darwin has no data, the diagram silently
 keeps its defaults. Darwin takes over no other display data —
 times, calling points and statuses stay on RTT.
 
+## Carriage loadings via Kafka push-port (alternative)
+
+If your RDM subscription is the Darwin push-port (Kafka) product
+instead of the REST board product, the board can sip loadings straight
+from the firehose — no REST key needed:
+
+```bash
+pip install kafka-python
+```
+
+```ini
+# .env (consumer group/username/password from the RDM product page)
+DARWIN_KAFKA_GROUP=SC-...
+DARWIN_KAFKA_USER=...
+DARWIN_KAFKA_PASSWORD=...
+# usually fine as defaults:
+# DARWIN_KAFKA_BOOTSTRAP=pkc-....confluent.cloud:9092
+# DARWIN_KAFKA_TOPIC=prod-...-Push-Port-IIII2_0-JSON
+```
+
+A background thread follows schedule, formation and loading messages,
+matches your RTT departures by headcode + date, and fills page 3.
+Learned schedules persist in untracked `darwin_kafka_state.json`, so a
+restart keeps working without waiting for the overnight timetable
+load. Never share these credentials (treat a posted password as
+burned and rotate it in RDM).
+
 If your product's API path differs from the default (compare the
 **Try it** URL on RDM with the `base:` line from the test below),
 set `DARWIN_BASE_URL=...` the same way. The board also negotiates
