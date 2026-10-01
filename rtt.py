@@ -47,12 +47,12 @@ HIDE_HEADCODES = {"0B00"}
 HIDE_MODES = {"BUS", "SCHEDULED_BUS", "REPLACEMENT_BUS"}
 
 STATUS_TEXT = {
-    "APPROACHING": "Train approaching",
-    "ARRIVING": "Train arriving",
-    "AT_PLATFORM": "Train at platform",
-    "DEPART_PREPARING": "Preparing to depart",
-    "DEPART_READY": "Ready to depart",
-    "DEPARTING": "Departing now",
+    "APPROACHING": "is approaching the station",
+    "ARRIVING": "is arriving at the platform",
+    "AT_PLATFORM": "is currently on the platform",
+    "DEPART_PREPARING": "is preparing to depart",
+    "DEPART_READY": "is ready to depart",
+    "DEPARTING": "is departing now",
 }
 
 SERVICE_TTL = 90    # seconds a /gb-nr/service result is reused
@@ -325,34 +325,30 @@ def _cars_from_alloc(a):
 
 
 def _notes(d):
-    """Page-2 info lines (cycled on the display), most urgent first."""
-    n = []
+    """Page-2 info as ONE sentence (the display scrolls it if long):
+    'This train is formed of 8 coaches and is currently on the platform.'
+    Delay and platform-change sentences are added only when they apply."""
     if d.get("is_cancelled"):
-        n.append(d.get("cancellation_reason") or "This service is cancelled")
-    else:
-        if d.get("is_delayed"):
-            line = f"Running {d['delay_minutes']} min late"
-            if d.get("delay_reason"):
-                line += f": {d['delay_reason']}"
-            n.append(line)
-        st = STATUS_TEXT.get(d.get("_loc_status"))
-        if st:
-            n.append(st)
-        pp, pl = d.get("_plat_planned"), d.get("platform")
-        if pp and pl and str(pp) != str(pl):
-            n.append(f"Platform changed from {pp} to {pl}")
-    cars = (d.get("formation") or {}).get("cars") or []
-    if cars:
-        line = f"{len(cars)} coach" + ("" if len(cars) == 1 else "es")
-        firsts = ["ABCDEFGH"[i] if i < 8 else str(i + 1)
-                  for i, c in enumerate(cars) if c.get("first")]
-        if firsts:
-            line += (", first class in coach " if len(firsts) == 1
-                     else ", first class in coaches ") + ", ".join(firsts)
-        n.append(line)
-    if d.get("operator"):
-        n.append(f"Operated by {d['operator']}")
-    return n
+        r = d.get("cancellation_reason")
+        return ["This service has been cancelled" + (f": {r}." if r else ".")]
+    preds = []
+    n = len((d.get("formation") or {}).get("cars") or [])
+    if n:
+        preds.append(f"is formed of {n} coach" + ("" if n == 1 else "es"))
+    st = STATUS_TEXT.get(d.get("_loc_status"))
+    if st:
+        preds.append(st)
+    out = []
+    if preds:
+        out.append("This train " + " and ".join(preds) + ".")
+    if d.get("is_delayed"):
+        line = f"It is running {d['delay_minutes']} min late"
+        out.append(line + (f": {d['delay_reason']}." if d.get("delay_reason")
+                           else "."))
+    pp, pl = d.get("_plat_planned"), d.get("platform")
+    if pp and pl and str(pp) != str(pl):
+        out.append(f"Platform changed from {pp} to {pl}.")
+    return [" ".join(out)] if out else []
 
 
 def _stop_label(l):
