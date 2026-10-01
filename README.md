@@ -9,7 +9,10 @@ shows "This service does not stop here" instead of calling-at points,
 and the formation page is skipped while the lead service is passing.
 Within the warning window (`--passing-warning-time`, seconds, default
 180) of passing through it takes over the whole screen with a bordered
-stand-back warning.
+stand-back warning (fast-train approaching, stand back from the edge,
+hold pushchairs/wheelchairs, stand behind the yellow line). The warning
+is latched so it stays up until the train has passed, even if the
+service drops off the data feed first.
 A web UI on port 4000 previews every page and live-edits the layout —
 tweaks reach the real LEDs within about a second, no restart.
 

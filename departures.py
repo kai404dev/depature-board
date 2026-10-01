@@ -52,6 +52,7 @@ THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, THIS_DIR)
 
 from api import (
+    PASS_WARNING_HOLD,
     PASS_WARNING_WINDOW,
     board_signature,
     calling_display_text,
@@ -65,6 +66,7 @@ from api import (
     is_passing_service,
     live_status,
     next_passing_warning,
+    passing_eta_seconds,
 )
 
 import rtt
@@ -457,6 +459,10 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     # drops out while the lead service is a passing one. Read by
     # page_label_geom, so it must exist before the first draw call.
     pages_now = list(args.pages)
+    # Warning latch: keeps the stand-back screen up until the train has
+    # passed, even if it drops off the board feed first.
+    warn_latch = None
+    warned_before = False
 
     control_path = os.path.join(THIS_DIR, "control.json")
 
@@ -841,10 +847,35 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         draw_page_chrome(page, frac)
 
     def draw_passing_warning(dep):
-        """Fullscreen takeover: border round the whole display plus a
-        stand-back warning. Drawn instead of every page while a
-        non-stopping service is about to pass (see next_passing_warning).
-        No clock / page chrome -- maximum impact, nothing to misread."""
+        """Fullscreen takeover: stand-back warning with a border round
+        the whole display. Shown while a non-stopping service approaches
+        and held until it has passed (see the warning latch in the main
+        loop). No clock / page chrome -- maximum impact, nothing to
+        misread."""
+        top_fnt = F["small"]
+        small_fnt = F["small"]
+        # Headline static and centered; the long lines scroll so the
+        # whole message gets shown. The border goes on last so the
+        # scrolling rows can never knock pixels out of it.
+        # All four lines share the small font: a bigger headline plus
+        # three body lines cannot stack on 40px without their ink
+        # colliding (9px rows + descenders).
+        head = fit_text(graphics, offscreen, top_fnt, C["alert"],
+                        "Fast Train Approaching", width - 6)
+        hw = text_width(graphics, offscreen, top_fnt, C["alert"], head)
+        graphics.DrawText(offscreen, top_fnt,
+                          resolve_x("center", hw, width), 9,
+                          C["alert"], head)
+        draw_scroll(small_fnt, C["text"],
+                    "Please stand back from the platform edge. "
+                    "The train now approaching does not stop here.",
+                    18, width - 2, "center")
+        draw_scroll(small_fnt, C["text"],
+                    "Please hold on to pushchairs and wheelchairs.",
+                    27, width - 2, "center")
+        draw_scroll(small_fnt, C["text"],
+                    "Stand well behind the yellow line.",
+                    36, width - 2, "center")
         edge = C["alert"]
         for xx in range(width):
             offscreen.SetPixel(xx, 0, edge.red, edge.green, edge.blue)
@@ -860,22 +891,6 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                                edge.blue)
             offscreen.SetPixel(width - 2, yy, edge.red, edge.green,
                                edge.blue)
-        # two blank LED rows between the border and the headline
-        warn = C["alert"]
-        body = C["text"]
-        top_fnt = F["top"]
-        small_fnt = F["small"]
-        lines = [("FAST TRAIN APPROACHING", top_fnt, warn, 15),
-                 ("PLEASE STAND WELL BACK", small_fnt, body, 27),
-                 ("FROM THE PLATFORM EDGE", small_fnt, body, 36)]
-        for text, fnt, col, y_base in lines:
-            if y_base < 2 or y_base >= height - 1:
-                continue
-            text = fit_text(graphics, offscreen, fnt, col, text, width - 6)
-            tw = text_width(graphics, offscreen, fnt, col, text)
-            graphics.DrawText(offscreen, fnt,
-                              resolve_x("center", tw, width), y_base,
-                              col, text)
 
     def draw_static(page, frac):
         # Lead service + calling-at, then compact rows on a fixed pitch.
@@ -941,6 +956,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 print(f"data source: {source}", file=sys.stderr, flush=True)
             last_source = source
             board, last_sig, last_fetch = [], None, 0
+            warn_latch = None  # stale warning must not survive a switch
         interval = (args.refresh if source == "htrs"
                     else max(args.refresh, args.rtt_refresh))
         if not board and source == "htrs":
@@ -963,6 +979,30 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 # else: data unchanged, keep the current display as-is
             last_fetch = now
 
+        # --- safety warning state ------------------------------------
+        # Fullscreen takeover while a non-stopping service approaches.
+        # Latched: once shown, it stays up until the train has passed
+        # (up to PASS_WARNING_HOLD after it drops off the board feed).
+        warn_secs = getattr(args, "passing_warning_time",
+                            PASS_WARNING_WINDOW)
+        try:
+            warn_secs = float(warn_secs)
+        except (TypeError, ValueError):
+            warn_secs = float(PASS_WARNING_WINDOW)
+        if warn_secs < 0:
+            warn_secs = float(PASS_WARNING_WINDOW)
+        passing = next_passing_warning(board, window=warn_secs)
+        if passing is not None:
+            eta = passing_eta_seconds(passing, now)
+            pass_ts = now + eta if eta is not None else now
+            warn_latch = {"dep": dict(passing),
+                          "until": pass_ts + PASS_WARNING_HOLD}
+        elif warn_latch is not None:
+            if now < warn_latch["until"]:
+                passing = warn_latch["dep"]
+            else:
+                warn_latch = None
+
         # --- page selection ------------------------------------------
         # A formation diagram is meaningless for a train that does not
         # stop: while the lead service is passing, page 3 leaves the
@@ -984,17 +1024,21 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 cur_page = paused
             was_held = True
         else:
-            if was_held:
-                # fresh dwell on unpause
+            if was_held or (warned_before and passing is None):
+                # fresh dwell on unpause / when the warning clears
                 was_held = False
                 page_since = now
             # never leave a page before its scrolling text has made one
-            # full pass (scroll_need is set by draw_scroll last frame)
-            if len(pages_now) > 1 and now - page_since >= max(
-                    args.page_seconds, scroll_need):
+            # full pass (scroll_need is set by draw_scroll last frame).
+            # The page cycle (and the scroll clock) freezes while the
+            # warning is up so its long lines scroll through fully.
+            if passing is None and len(pages_now) > 1 \
+                    and now - page_since >= max(
+                        args.page_seconds, scroll_need):
                 page_idx = (page_idx + 1) % len(pages_now)
                 page_since = now
             cur_page = pages_now[page_idx % len(pages_now)]
+        warned_before = passing is not None
 
         if preview_frac is not None:
             frac = preview_frac
@@ -1009,23 +1053,13 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         scroll_need = 0.0
         offscreen.Fill(0, 0, 0)
 
-        # Safety takeover: a non-stopping service due within the
-        # warning window (--passing-warning-time) replaces every page
-        # with the stand-back warning.
-        warn_secs = getattr(args, "passing_warning_time",
-                            PASS_WARNING_WINDOW)
-        try:
-            warn_secs = float(warn_secs)
-        except (TypeError, ValueError):
-            warn_secs = float(PASS_WARNING_WINDOW)
-        if warn_secs < 0:
-            warn_secs = float(PASS_WARNING_WINDOW)
-        passing = next_passing_warning(board, window=warn_secs)
+        # Safety takeover: the stand-back warning replaces every page.
         if passing is None:
             draw_passing_warning._announced = None
         if passing is not None:
-            if getattr(draw_passing_warning, "_announced", None) is not passing:
-                draw_passing_warning._announced = passing
+            key = (passing.get("headcode"), passing.get("scheduled_time"))
+            if getattr(draw_passing_warning, "_announced", None) != key:
+                draw_passing_warning._announced = key
                 try:
                     t, dest, _, _ = format_departure(passing)
                 except Exception:
