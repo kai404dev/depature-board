@@ -434,6 +434,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     board = []
     last_fetch = 0
     last_sig = None
+    last_source = None 
     idx = 0
     idx_since = time.time()
     page_idx = 0
