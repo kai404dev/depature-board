@@ -1832,4 +1832,3 @@ def get_departures(
     )
 
     return result
-```
