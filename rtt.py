@@ -1134,12 +1134,63 @@ def _to_departure(svc, now, station=None):
 # Formation
 # ---------------------------------------------------------------------------
 
+def _unit_sizes(a):
+    """Per-unit car counts from allocationItems UNIT/SET entries.
+
+    Singular stock (LOCO/WAGON/CARRIAGE) is skipped: one entry is one
+    vehicle and carries no usable count. componentVehicles is ignored
+    -- it can be a partial list, so numberOfVehicles is authoritative.
+    """
+
+    sizes = []
+
+    for it in (
+        a.get("allocationItems")
+        or []
+    ):
+        if not isinstance(it, dict):
+            continue
+
+        if it.get("stockType") in (
+            "LOCO",
+            "WAGON",
+            "CARRIAGE",
+        ):
+            continue
+
+        c = it.get("numberOfVehicles")
+
+        if (
+            isinstance(c, bool)
+            or not isinstance(c, int)
+            or c <= 0
+        ):
+            continue
+
+        sizes.append(c)
+
+    return sizes
+
+
+def _repeat_size(size, total):
+    """Split total into units of size, or None when it fits unevenly."""
+
+    if size <= 0 or total <= 0 or total % size != 0:
+        return None
+
+    return [size] * (total // size)
+
+
 def _cars_from_alloc(a):
     """Coach list from a NetworkRailAllocation.
 
     Each non-empty KnowYourTrain group (one unit) marks its leading
     car with unit_front=True so the diagram can slant each unit.
-    Falls back to allocationItems UNIT sizes when KYT has no groups.
+    When KYT lists every coach in a single group, allocationItems
+    UNIT sizes split them back into units (e.g. 10 cars -> 5+5).
+    With no KYT vehicles at all, the UNIT sizes (or
+    passengerVehicles) give the car count. The KYT vehicle list
+    always wins for the total; UNIT sizes win for the split.
     """
 
     unit_groups = []
@@ -1189,35 +1240,59 @@ def _cars_from_alloc(a):
         if group:
             unit_groups.append(group)
 
-    if not unit_groups:
-        n = a.get(
-            "passengerVehicles"
-        )
+    sizes = _unit_sizes(a)
 
-        if (
-            isinstance(n, int)
-            and n > 0
-        ):
-            counts = []
-            for it in (
-                a.get("allocationItems")
-                or []
-            ):
-                c = it.get("numberOfVehicles")
-                if (
-                    isinstance(c, int)
-                    and c > 0
-                ):
-                    counts.append(c)
-            if len(counts) > 1 and sum(counts) == n:
-                unit_groups = [
-                    _plain_formation(c)["cars"]
-                    for c in counts
-                ]
-            else:
-                unit_groups = [
-                    _plain_formation(n)["cars"]
-                ]
+    n = a.get("passengerVehicles")
+
+    if (
+        isinstance(n, bool)
+        or not isinstance(n, int)
+        or n <= 0
+    ):
+        n = 0
+
+    if unit_groups:
+        flat = [c for g in unit_groups for c in g]
+
+        if len(unit_groups) == 1 and sizes:
+            total = len(flat)
+            counts = None
+
+            if sum(sizes) == total:
+                counts = list(sizes)
+            elif len(sizes) == 1:
+                counts = _repeat_size(sizes[0], total)
+
+            if counts is not None and len(counts) > 1:
+                pos = 0
+                split = []
+
+                for s in counts:
+                    split.append(flat[pos:pos + s])
+                    pos += s
+
+                unit_groups = split
+    elif sizes and (n <= 0 or sum(sizes) == n):
+        unit_groups = [
+            _plain_formation(c)["cars"]
+            for c in sizes
+        ]
+    elif len(sizes) == 1 and n > 0 and n != sizes[0]:
+        repeated = _repeat_size(sizes[0], n)
+
+        if repeated is not None and len(repeated) > 1:
+            unit_groups = [
+                _plain_formation(c)["cars"]
+                for c in repeated
+            ]
+        else:
+            unit_groups = [
+                _plain_formation(n)["cars"]
+            ]
+    elif n > 0:
+        unit_groups = [
+            _plain_formation(n)["cars"]
+        ]
 
     if REVERSE_FORMATION:
         unit_groups = [
