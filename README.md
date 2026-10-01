@@ -39,40 +39,45 @@ tweaks reach the real LEDs within about a second, no restart.
 `--preview` prints a to-scale ASCII map of every page with element
 bounds and overlap warnings — the fastest way to check spacing.
 
-## Carriage loadings (Darwin, RTT mode only)
+## Carriage loadings (Darwin via RDM, RTT mode only)
 
 RTT's Know Your Train gives coach count and facilities but no seating
-availability. The page-3 fill levels come from National Rail Darwin
-(LDBWS), which publishes per-coach loadings (0–100) wherever the train
+availability. The page-3 fill levels come from National Rail Darwin,
+which publishes per-coach loadings (0–100) wherever the train
 operator feeds them in (e.g. Avanti, CrossCountry — but not every
 operator, and heritage railways not at all):
 
-1. Register free at `opendata.nationalrail.co.uk` and get an LDBWS token.
-2. Put `DARWIN_TOKEN=...` in `.env` next to `departures.py`
-   (or set `$DARWIN_TOKEN` / create `darwin_token.txt`).
-3. Run with `--source rtt`. The board matches each RTT departure to
+1. Register at `raildata.org.uk` (consumer access is enough) and
+   subscribe to the **Live Departure Board** product (free, approved
+   immediately).
+2. Open the product → **Specification** tab → copy the **Consumer key**.
+3. Put `DARWIN_TOKEN=<consumer key>` in `.env` next to
+   `departures.py` (or set `$DARWIN_TOKEN` / create
+   `darwin_token.txt`).
+4. Run with `--source rtt`. The board matches each RTT departure to
    Darwin by scheduled time + operator + destination at the same
    station and fills the formation cars with the real loadings.
 
-Without a token, or where Darwin has no data, the diagram silently
+Without a key, or where Darwin has no data, the diagram silently
 keeps its defaults. Darwin takes over no other display data —
 times, calling points and statuses stay on RTT.
 
-If the journal shows `Darwin loading lookup failed: HTTP Error 401`,
-Darwin rejected the token. Test it directly on the Pi (never prints
-the token itself):
+If your product's API path differs from the default (compare the
+**Try it** URL on RDM with the `base:` line from the test below),
+set `DARWIN_BASE_URL=...` the same way.
+
+Test it directly on the Pi (never prints the key itself):
 
 ```bash
 python3 darwin.py SOT
 ```
 
-It reports where the token came from and how long it is. A genuine
-LDBWS token is a 36-char GUID from `opendata.nationalrail.co.uk`
-(My Account area) — not your account password and not a Rail Data
-Marketplace key; anything else gets a 401 and the board warns about
-the length at startup. If it says `from environment` while you edited
-`.env`, an old exported variable is winning. `.env` lines look like
-`DARWIN_TOKEN=abc123` (quotes and trailing `# comments` are fine).
+It reports where the key came from, lists the next services found,
+and shows per-coach loadings (`A:80, B:20, ...`, `-` unknown).
+`HTTP 401` means the key is wrong or missing; `HTTP 404` usually
+means the base path doesn't match your product — set
+`DARWIN_BASE_URL` (the board retries the other known path
+automatically).
 
 ## Pi setup
 

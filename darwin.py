@@ -3,7 +3,7 @@
 
 RTT's Know Your Train gives formation + facilities but no seating
 availability. Darwin is the only public source of per-coach loadings:
-departure boards return FormationData with per-coach loading 0-100
+departure boards return formation with per-coach loading 0-100
 wherever the train operator feeds it in (e.g. Avanti, CrossCountry).
 
 This module fetches the Darwin departure board for a station, matches
@@ -11,32 +11,37 @@ one RTT departure (scheduled time + operator + destination) and merges
 the loadings into the departure's formation cars as capacity 0..1,
 which is exactly what the page-3 diagram renders.
 
-Needs its own token (free registration at opendata.nationalrail.co.uk):
+Access is via the Rail Data Marketplace: subscribe (free) to the
+"Live Departure Board" product and use its Consumer key:
   DARWIN_TOKEN=... in the environment, in .env, or in darwin_token.txt
-next to this file. Without a token every function here degrades to a
+next to this file. Without a key every function here degrades to a
 no-op and the board keeps its default loadings.
+
+If your product's API path differs from the default below (see its
+"Try it" URL on RDM), set DARWIN_BASE_URL to match.
 
 Pure standard library. No hardware needed.
 
-Endpoints (schema 2021-11-01, ldb12.asmx):
-  GetDepartureBoard  basic board; ServiceItem.formation holds the
-                     loadings at this location when known
-  GetServiceDetails  fallback per serviceID; ServiceDetails.formation
+REST (RDM, api1.raildata.org.uk, x-apikey header):
+  GetDepartureBoard/{crs}  basic board; service.formation holds the
+                           loadings at this location when known
+  GetServiceDetails/{id}   fallback per serviceID
 """
 
+import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET
 
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 
-ENDPOINT = ("https://realtime.nationalrail.co.uk:443/OpenLDBWS/ldb12.asmx")
-LDB_NS = "http://thalesgroup.com/RTTI/2021-11-01/ldb/"
-TOKEN_NS = "http://thalesgroup.com/RTTI/2013-11-28/Token/types"
-ACT_BOARD = ("http://thalesgroup.com/RTTI/2012-01-13/ldb/GetDepartureBoard")
-ACT_DETAILS = ("http://thalesgroup.com/RTTI/2012-01-13/ldb/GetServiceDetails")
+DEFAULT_BASE_URL = ("https://api1.raildata.org.uk"
+                    "/1010-live-departure-board-dep1_2"
+                    "/LDBWS/api/20220120")
+BASE_KEYS = ("DARWIN_BASE_URL",)
 
 TOKEN_KEYS = ("DARWIN_TOKEN", "DARWIN_API_TOKEN")
 
@@ -55,6 +60,7 @@ STD_TOLERANCE_MIN = 3
 _D = {
     "token": "",
     "source": "",
+    "base_url": "",
     "board_cache": {},    # crs -> (at, services or None)
     "details_cache": {},  # service_id -> (at, formation or None)
     "last_err": "",
@@ -109,7 +115,7 @@ def _first(d, keys):
 
 
 def load_token():
-    """Token from environment, .env, then darwin_token.txt.
+    """Consumer key from environment, .env, then darwin_token.txt.
 
     Remembers where it came from (see token_info). Accepts
     DARWIN_TOKEN or DARWIN_API_TOKEN.
@@ -133,31 +139,6 @@ def load_token():
     return tok
 
 
-def token_info():
-    """(source, length) of the loaded token for startup diagnostics.
-
-    The value itself is never logged.
-    """
-    return _D["source"] or "none", len(_D["token"])
-
-
-def token_warning():
-    """Human-readable hint when the loaded token looks wrong, else ''.
-
-    Genuine LDBWS tokens from opendata.nationalrail.co.uk are 36-char
-    GUIDs -- anything else is almost certainly a password, an RDM key,
-    or a paste slip, all of which Darwin answers with 401.
-    """
-    if not _D["token"]:
-        return ("no token: set $DARWIN_TOKEN (or DARWIN_API_TOKEN), "
-                ".env, or darwin_token.txt")
-    if len(_D["token"]) != 36:
-        return (f"token is {len(_D['token'])} chars, expected a 36-char "
-                "LDBWS token (GUID) from opendata.nationalrail.co.uk -- "
-                "check it is not an account password or RDM key")
-    return ""
-
-
 def set_token(token):
     _D["token"] = (token or "").strip()
     if _D["token"] and not _D["source"]:
@@ -168,122 +149,140 @@ def set_token(token):
     _D["details_cache"] = {}
 
 
+def base_url():
+    """RDM API base: DARWIN_BASE_URL or the default product path."""
+    if not _D["base_url"]:
+        env = _read_dotenv(os.path.join(THIS_DIR, ".env"))
+        _D["base_url"] = (_first(os.environ, BASE_KEYS)
+                          or _first(env, BASE_KEYS)
+                          or DEFAULT_BASE_URL).rstrip("/")
+    return _D["base_url"]
+
+
+def set_base_url(url):
+    _D["base_url"] = (url or "").strip().rstrip("/")
+
+
 def configured():
     return bool(_D["token"])
 
 
+def token_info():
+    """(source, length) of the loaded key for startup diagnostics.
+
+    The value itself is never logged.
+    """
+    return _D["source"] or "none", len(_D["token"])
+
+
+def token_warning():
+    """Human-readable hint when the loaded key looks wrong, else ''."""
+    if not _D["token"]:
+        return ("no key: subscribe to Live Departure Board on "
+                "raildata.org.uk, then set $DARWIN_TOKEN, .env, "
+                "or darwin_token.txt")
+    if len(_D["token"]) < 20:
+        return ("key looks short for an RDM consumer key -- check the "
+                "Specification tab of your Live Departure Board product")
+    return ""
+
+
 # ---------------------------------------------------------------------------
-# SOAP
+# REST
 # ---------------------------------------------------------------------------
 
-def _local(tag):
-    """Strip any {namespace} prefix for version-robust parsing."""
-    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+def _alt_base(url):
+    """The other known product path, for 404 fallback."""
+    if "live-departure-board-dep1_2" in url:
+        return url.replace("live-departure-board-dep1_2",
+                           "live-departure-board-dep")
+    if "live-departure-board-dep" in url:
+        return url.replace("live-departure-board-dep",
+                           "live-departure-board-dep1_2")
+    return ""
 
 
-def _kids(elem):
-    return list(elem)
+def _get(path, params=None, timeout=12):
+    """GET one REST resource, trying the alternate product path on 404.
 
-
-def _find(elem, *names):
-    """First direct child with any of the local names, else None."""
-    for kid in _kids(elem):
-        if _local(kid.tag) in names:
-            return kid
-    return None
-
-
-def _findall(elem, *names):
-    return [k for k in _kids(elem) if _local(k.tag) in names]
-
-
-def _text(elem, *names, default=""):
-    kid = _find(elem, *names)
-    if kid is None or kid.text is None:
-        return default
-    return kid.text.strip()
-
-
-def _soap(action, operation, params_xml, timeout=12):
-    """POST one SOAP call. Returns the response body element. Raises."""
-    token = _D["token"]
-    if not token:
-        raise RuntimeError("no Darwin token: set $DARWIN_TOKEN or create "
-                           "darwin_token.txt next to darwin.py")
-    envelope = (
-        '<?xml version="1.0" encoding="utf-8"?>'
-        '<soap:Envelope '
-        'xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" '
-        'xmlns:ldb="' + LDB_NS + '" '
-        'xmlns:tok="' + TOKEN_NS + '">'
-        "<soap:Header>"
-        '<tok:AccessToken><tok:TokenValue>' + _xml_escape(token) +
-        "</tok:TokenValue></tok:AccessToken>"
-        "</soap:Header>"
-        "<soap:Body>"
-        "<ldb:" + operation + ">" + params_xml +
-        "</ldb:" + operation + ">"
-        "</soap:Body></soap:Envelope>"
-    )
-    data = envelope.encode("utf-8")
-    req = urllib.request.Request(
-        ENDPOINT, data=data,
-        headers={"Content-Type": "text/xml; charset=utf-8",
-                 "SOAPAction": action,
-                 "User-Agent": "departure-display/1.0"})
-    _debug(f"POST {operation} bytes={len(data)}")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read()
-    _debug(f"{operation} -> {len(raw)} bytes")
-    try:
-        root = ET.fromstring(raw)
-    except ET.ParseError as e:
-        raise RuntimeError(f"Darwin returned non-XML ({e})")
-    fault = None
-    for elem in root.iter():
-        if _local(elem.tag) == "Fault":
-            fault = elem
-            break
-    if fault is not None:
-        msg = _text(fault, "faultstring", default="SOAP fault")
-        _debug(f"FAULT {operation}: {msg}")
-        raise RuntimeError(f"Darwin fault: {msg}")
-    return root
-
-
-def _xml_escape(s):
-    return (s.replace("&", "&amp;").replace("<", "&lt;")
-             .replace(">", "&gt;").replace('"', "&quot;"))
+    Returns parsed JSON. Raises RuntimeError with the status and a
+    snippet of the body on failure.
+    """
+    bases = [base_url()]
+    alt = _alt_base(bases[0])
+    if alt and alt != bases[0]:
+        bases.append(alt)
+    last = None
+    for base in bases:
+        url = base + "/" + path.lstrip("/")
+        if params:
+            qs = urllib.parse.urlencode(
+                {k: v for k, v in params.items() if v is not None})
+            if qs:
+                url += "?" + qs
+        req = urllib.request.Request(
+            url, headers={"Accept": "application/json",
+                          "x-apikey": _D["token"],
+                          "User-Agent": "departure-display/1.0"})
+        _debug(f"GET {path} base={base}")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = resp.read()
+        except urllib.error.HTTPError as e:
+            try:
+                detail = e.read().decode("utf-8", "replace")[:200]
+            except Exception:
+                detail = ""
+            hint = ""
+            if e.code == 401:
+                hint = (" (check the RDM consumer key, and that "
+                        "DARWIN_BASE_URL matches your product's Try-it URL)")
+            last = RuntimeError(
+                f"Darwin REST {e.code} {e.reason}: {detail}{hint}")
+            _debug(f"{path} -> HTTP {e.code} on {base}")
+            if e.code == 404 and base != bases[-1]:
+                continue  # wrong product path? try the other one
+            raise last
+        try:
+            return json.loads(body.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as e:
+            raise RuntimeError(f"Darwin returned non-JSON ({e})")
+    raise last
 
 
 # ---------------------------------------------------------------------------
 # Boards + details
 # ---------------------------------------------------------------------------
 
-def _parse_formation(elem):
-    """FormationData element -> {'coaches': [{number, class, loading}]}.
+def _parse_formation(form):
+    """formation dict -> {'coaches': [{number, class, loading}]}.
 
     loading is 0..100 int or None when Darwin doesn't know it.
     Returns None when no usable coach list is present.
     """
-    if elem is None:
+    if not isinstance(form, dict):
         return None
-    coaches_elem = _find(elem, "coaches")
-    if coaches_elem is None:
+    raw = form.get("coaches")
+    if isinstance(raw, dict):
+        # some wrappers nest the list, e.g. {"coach": [...]}
+        raw = raw.get("coach", raw.get("coaches", []))
+    if not isinstance(raw, list):
         return None
     coaches = []
-    for coach in _findall(coaches_elem, "coach"):
-        number = coach.get("number") or ""
-        loading = None
-        raw = _text(coach, "loading", default="")
-        if raw != "":
+    for c in raw:
+        if not isinstance(c, dict):
+            continue
+        number = c.get("number", c.get("coachNumber", c.get("@number", "")))
+        cls = c.get("coachClass", c.get("class", "")) or ""
+        loading = c.get("loading")
+        if loading is not None:
             try:
-                loading = max(0, min(100, int(float(raw))))
+                loading = max(0, min(100, int(float(loading))))
             except (TypeError, ValueError):
                 loading = None
         coaches.append({
-            "number": number.strip(),
-            "class": _text(coach, "coachClass", default=""),
+            "number": str(number or "").strip(),
+            "class": str(cls or "").strip(),
             "loading": loading,
         })
     if not coaches:
@@ -291,26 +290,28 @@ def _parse_formation(elem):
     return {"coaches": coaches}
 
 
+def _loc_name(loc):
+    if isinstance(loc, dict):
+        return loc.get("locationName") or "", (loc.get("crs") or "").upper()
+    return "", ""
+
+
 def _parse_service(svc):
-    """One board service element -> dict (formation may be None)."""
-    dests = _find(svc, "destination")
-    dest_name, dest_crs = "", ""
-    if dests is not None:
-        loc = _find(dests, "location")
-        if loc is not None:
-            dest_name = _text(loc, "locationName")
-            dest_crs = _text(loc, "crs")
+    """One board service dict -> our shape (formation may be None)."""
+    origins = svc.get("origin") or []
+    dests = svc.get("destination") or []
+    dest_name, dest_crs = _loc_name(dests[0]) if dests else ("", "")
     return {
-        "service_id": _text(svc, "serviceID"),
-        "std": _text(svc, "std"),
-        "etd": _text(svc, "etd"),
-        "operator": _text(svc, "operator"),
-        "operator_code": _text(svc, "operatorCode"),
-        "platform": _text(svc, "platform"),
-        "is_cancelled": _text(svc, "isCancelled").lower() == "true",
+        "service_id": (svc.get("serviceID") or svc.get("serviceId") or ""),
+        "std": svc.get("std") or "",
+        "etd": svc.get("etd") or "",
+        "operator": svc.get("operator") or "",
+        "operator_code": svc.get("operatorCode") or "",
+        "platform": svc.get("platform") or "",
+        "is_cancelled": bool(svc.get("isCancelled")),
         "dest_name": dest_name,
-        "dest_crs": dest_crs.upper(),
-        "formation": _parse_formation(_find(svc, "formation")),
+        "dest_crs": dest_crs,
+        "formation": _parse_formation(svc.get("formation")),
     }
 
 
@@ -324,19 +325,12 @@ def get_board(crs, rows=10, window=120):
     if hit and now - hit[0] < BOARD_TTL and hit[1] is not None:
         _debug(f"BOARD CACHE HIT {crs}")
         return hit[1]
-    params = (f"<ldb:numRows>{int(rows)}</ldb:numRows>"
-              f"<ldb:crs>{_xml_escape(crs)}</ldb:crs>"
-              f"<ldb:timeWindow>{int(window)}</ldb:timeWindow>")
-    root = _soap(ACT_BOARD, "GetDepartureBoardRequest", params)
-    services = []
-    for elem in root.iter():
-        if _local(elem.tag) != "service":
-            continue
-        # service elements also appear nested in departure lists; only
-        # trainServices entries carry std/operator -- skip the rest
-        if _find(elem, "std") is None and _find(elem, "operator") is None:
-            continue
-        services.append(_parse_service(elem))
+    data = _get(f"GetDepartureBoard/{urllib.parse.quote(crs, safe='')}",
+                {"numRows": int(rows), "timeWindow": int(window)})
+    if not isinstance(data, dict):
+        raise RuntimeError("Darwin returned an unexpected board shape")
+    services = [_parse_service(s) for s in
+                data.get("trainServices") or []]
     _debug(f"BOARD {crs}: {len(services)} services")
     _D["board_cache"][crs] = (now, services)
     if len(_D["board_cache"]) > 20:
@@ -347,7 +341,7 @@ def get_board(crs, rows=10, window=120):
 
 
 def get_details_formation(service_id):
-    """FormationData for one board serviceID. Cached DETAILS_TTL."""
+    """Formation for one board serviceID. Cached DETAILS_TTL."""
     if not service_id:
         return None
     now = time.time()
@@ -355,18 +349,14 @@ def get_details_formation(service_id):
     if hit and now - hit[0] < DETAILS_TTL:
         _debug("DETAILS CACHE HIT")
         return hit[1]
-    params = (f"<ldb:serviceID>{_xml_escape(service_id)}</ldb:serviceID>")
     try:
-        root = _soap(ACT_DETAILS, "GetServiceDetailsRequest", params)
+        data = _get("GetServiceDetails/"
+                    f"{urllib.parse.quote(service_id, safe='')}")
     except Exception as e:
         _debug(f"details failed: {e}")
         _D["details_cache"][service_id] = (now, None)
         return None
-    formation = None
-    for elem in root.iter():
-        if _local(elem.tag) == "GetServiceDetailsResult":
-            formation = _parse_formation(_find(elem, "formation"))
-            break
+    formation = _parse_formation((data or {}).get("formation"))
     _D["details_cache"][service_id] = (now, formation)
     return formation
 
@@ -564,16 +554,16 @@ def enrich_loading(dep, station_crs):
 
 
 def main():
-    """Standalone token/board check: python3 darwin.py [CRS].
+    """Standalone key/board check: python3 darwin.py [CRS].
 
-    Prints where the token came from (never its value), fetches the
+    Prints where the key came from (never its value), fetches the
     Darwin departure board, and lists per-coach loadings. Exit non-zero
     with the exact error when something fails.
     """
     import argparse
     global DEBUG
     ap = argparse.ArgumentParser(
-        description="Test the Darwin LDBWS token and show coach loadings")
+        description="Test the Darwin (RDM) key and show coach loadings")
     ap.add_argument("crs", nargs="?", default="SOT",
                     help="Station CRS code (default SOT)")
     ap.add_argument("--debug", action="store_true",
@@ -582,12 +572,13 @@ def main():
     DEBUG = args.debug
     set_token(load_token())
     src, nchars = token_info()
-    print(f"token: from {src}, {nchars} chars")
+    print(f"key: from {src}, {nchars} chars")
+    print(f"base: {base_url()}")
     warn = token_warning()
     if warn:
         print(f"WARNING: {warn}")
     if not configured():
-        sys.exit("no token to test with")
+        sys.exit("no key to test with")
     try:
         services = get_board(args.crs.strip().upper(), rows=10, window=120)
     except Exception as e:
