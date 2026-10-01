@@ -28,8 +28,9 @@ Or a JSON file: [{"route": "43", "destination": "Sheffield",
 "via": "Dronfield"}, ...] ("dest" accepted for "destination").
 
 Image mode: --image bitmap/fluffynet.png shows a PNG scaled to the
-panel instead of blinds (--image-fit fit|fill|stretch, default fit).
-Repeatable, rotates like services. PNG decoding is stdlib only.
+panel (--image-fit fit|fill|stretch, default fit). Mixes with
+--service in the order given, rotating between image screens and
+text blinds. PNG decoding is stdlib only.
 
 Modes:
   --mock     print to console instead of driving the LED matrix
@@ -104,32 +105,24 @@ def parse_service(s):
     return {"route": route, "destination": dest, "via": via}
 
 
-def load_services(args):
-    services = []
-    if args.services_file:
-        with open(args.services_file) as f:
-            data = json.load(f)
-        if isinstance(data, dict) and "services" in data:
-            data = data["services"]
-        if not isinstance(data, list):
-            sys.exit("--services-file must hold a list of services")
-        for d in data:
-            if not isinstance(d, dict):
-                sys.exit("--services-file entries must be objects")
-            services.append({
-                "route": str(d.get("route", d.get("number", ""))),
-                "destination": str(d.get("destination",
-                                         d.get("dest", ""))),
-                "via": str(d.get("via", "")),
-            })
-    for s in args.service or []:
-        services.append(parse_service(s))
-    if not services:
-        services = [dict(d) for d in DEMO]
-    # drop fully empty rows
-    services = [d for d in services
-                if d.get("route") or d.get("destination")]
-    return services[:args.limit]
+def load_file_services(path):
+    with open(path) as f:
+        data = json.load(f)
+    if isinstance(data, dict) and "services" in data:
+        data = data["services"]
+    if not isinstance(data, list):
+        sys.exit("--services-file must hold a list of services")
+    out = []
+    for d in data:
+        if not isinstance(d, dict):
+            sys.exit("--services-file entries must be objects")
+        out.append({
+            "route": str(d.get("route", d.get("number", ""))),
+            "destination": str(d.get("destination",
+                                     d.get("dest", ""))),
+            "via": str(d.get("via", "")),
+        })
+    return out
 
 
 def via_text(svc, prefix=True):
@@ -493,7 +486,7 @@ def scale_pixels(src, sw, sh, dw, dh, mode):
     return dst
 
 
-def run_board(args, services):
+def run_board(args, playlist):
     from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 
     options = RGBMatrixOptions()
@@ -519,20 +512,19 @@ def run_board(args, services):
     offscreen = matrix.CreateFrameCanvas()
     W, H = offscreen.width, offscreen.height
 
-    # image mode: preload every PNG scaled to the panel once
-    frames = []
-    for ip in (args.image or []):
-        sw, sh, rgb = decode_png(ip)
-        frames.append((ip, sw, sh,
-                       scale_pixels(rgb, sw, sh, W, H, args.image_fit)))
-        print(f"image {ip}: {sw}x{sh} -> {args.image_fit} {W}x{H}",
-              file=sys.stderr, flush=True)
-    if frames:
-        print(f"bus board {W}x{H} images={len(frames)}",
-              file=sys.stderr, flush=True)
-    else:
-        print(f"bus board {W}x{H} services={len(services)}",
-              file=sys.stderr, flush=True)
+    # image playlist: preload every PNG scaled to the panel once
+    frames = {}
+    n_svc = sum(1 for it in playlist if it["type"] == "service")
+    for it in playlist:
+        if it["type"] == "image" and it["path"] not in frames:
+            sw, sh, rgb = decode_png(it["path"])
+            frames[it["path"]] = scale_pixels(
+                rgb, sw, sh, W, H, args.image_fit)
+            print(f"image {it['path']}: {sw}x{sh} -> "
+                  f"{args.image_fit} {W}x{H}",
+                  file=sys.stderr, flush=True)
+    print(f"bus board {W}x{H} services={n_svc} images={len(frames)}",
+          file=sys.stderr, flush=True)
 
     # Vertical geometry: route digits vertically centred (their lit
     # band sits in the upper part of the doubled glyph box, so the
@@ -654,49 +646,49 @@ def run_board(args, services):
 
     while True:
         now = time.time()
-        if frames:
-            # image mode: static pictures, rotate if several
-            if len(frames) > 1 and now - idx_since >= args.rotate_seconds:
-                idx = (idx + 1) % len(frames)
-                idx_since = now
-            scroll_need = 0.0
-            offscreen.Fill(0, 0, 0)
-            blit(frames[idx % len(frames)][3])
-            offscreen = matrix.SwapOnVSync(offscreen)
-            if args.once:
-                break
-            time.sleep(0.5)
-            continue
-        # one blind at a time; rotate when several services are given.
-        # Never leave before scrolling text has made one full pass.
-        if len(services) > 1 and \
-                now - idx_since >= max(args.rotate_seconds, scroll_need):
-            idx = (idx + 1) % len(services)
+        cur = playlist[idx % len(playlist)]
+        # text waits for its scroll to finish; images just dwell
+        need = max(args.rotate_seconds, scroll_need) \
+            if cur["type"] == "service" else args.rotate_seconds
+        if len(playlist) > 1 and now - idx_since >= need:
+            idx = (idx + 1) % len(playlist)
             idx_since = now
             page_since = now
+            cur = playlist[idx % len(playlist)]
 
         scroll_need = 0.0
         offscreen.Fill(0, 0, 0)
-        draw_blind(services[idx % len(services)])
+        if cur["type"] == "image":
+            blit(frames[cur["path"]])
+        else:
+            draw_blind(cur["svc"])
 
         offscreen = matrix.SwapOnVSync(offscreen)
         if args.once:
             break
-        time.sleep(0.08)
+        time.sleep(0.08 if cur["type"] == "service" else 0.5)
+
+
+def _order_action(option_strings, dest, **kwargs):
+    """argparse action recording --service/--image in CLI order."""
+    class Order(argparse.Action):
+        def __call__(self, parser, ns, values, option=None):
+            ns.playlist.append((self.dest, values))
+    return Order(option_strings, dest, **kwargs)
 
 
 def main():
     p = argparse.ArgumentParser(description="Bus front destination blind")
-    p.add_argument("--service", action="append", default=[],
+    p.set_defaults(playlist=[])
+    p.add_argument("--service", action=_order_action,
                    help='One blind as "ROUTE|DEST|VIA", e.g. '
                         '"43|Sheffield|Dronfield, Chesterfield". Repeatable: '
                         'several services rotate. '
                         'Shorthand "43: Sheffield via Dronfield" also works.')
-    p.add_argument("--image", action="append", default=[],
-                   help="Show a PNG image scaled to the panel instead of "
-                        "blinds, e.g. --image bitmap/fluffynet.png. "
-                        "Repeatable: several images rotate. Images take "
-                        "over when given; services are ignored.")
+    p.add_argument("--image", action=_order_action,
+                   help="Show a PNG image scaled to the panel, e.g. "
+                        "--image bitmap/fluffynet.png. Mixes with --service "
+                        "in the order given, rotating between them.")
     p.add_argument("--image-fit", default="fit",
                    choices=["fit", "fill", "stretch"],
                    help="How images map to the panel: fit (whole image, "
@@ -761,32 +753,36 @@ def main():
                    default=True)
     args = p.parse_args()
 
-    services = load_services(args)
-
-    if args.image:
-        if args.mock:
-            for ip in args.image:
-                sw, sh, _ = decode_png(ip)
-                print(f"{ip}: {sw}x{sh} -> {args.image_fit} "
-                      f"{args.led_cols * args.led_chain}"
-                      f"x{args.led_rows}")
-            return
-        if args.preview:
-            import preview
-            W = args.led_cols * args.led_chain
-            H = args.led_rows
-            rec = preview.install(W, H)
-            run_board(args, [])
-            print(f"--- bus image preview ({W}x{H}) ---")
-            # images paint raw pixels: count non-black ones
-            lit = sum(1 for v in rec.paint.values() if v != (0, 0, 0))
-            print(f"  {lit} lit pixels of {W * H}")
-            return
-        run_board(args, [])
-        return
+    # mixed playlist in CLI order: text blinds + image screens
+    playlist = []
+    n_svc = 0
+    if args.services_file:
+        for d in load_file_services(args.services_file):
+            playlist.append({"type": "service", "svc": d})
+            n_svc += 1
+    for kind, val in args.playlist or []:
+        if kind == "service":
+            if n_svc >= args.limit:
+                continue
+            d = parse_service(val)
+            if not (d.get("route") or d.get("destination")):
+                continue
+            playlist.append({"type": "service", "svc": d})
+            n_svc += 1
+        else:
+            playlist.append({"type": "image", "path": val})
+    if not playlist:
+        playlist = [{"type": "service", "svc": dict(d)} for d in DEMO]
 
     if args.mock:
-        print(format_console(services, show_via=args.via))
+        for it in playlist:
+            if it["type"] == "service":
+                print(format_console([it["svc"]], show_via=args.via))
+            else:
+                sw, sh, _ = decode_png(it["path"])
+                print(f"{it['path']}: {sw}x{sh} -> {args.image_fit} "
+                      f"{args.led_cols * args.led_chain}"
+                      f"x{args.led_rows}")
         if not args.once:
             print("(bus-board mock: static list, nothing to poll. "
                   "Re-run to update.)", file=sys.stderr)
@@ -797,12 +793,18 @@ def main():
         W = args.led_cols * args.led_chain
         H = args.led_rows
         rec = preview.install(W, H)
-        run_board(args, services)
+        run_board(args, playlist)
         print(f"--- bus board preview ({W}x{H}) ---")
-        rec.report()
+        print(f"  showing item 1 of {len(playlist)} "
+              f"({playlist[0]['type']})")
+        if playlist[0]["type"] == "image":
+            lit = sum(1 for v in rec.paint.values() if v != (0, 0, 0))
+            print(f"  {lit} lit pixels of {W * H}")
+        else:
+            rec.report()
         return
 
-    run_board(args, services)
+    run_board(args, playlist)
 
 
 if __name__ == "__main__":
