@@ -416,9 +416,9 @@ def _apply_service(d, svc, station):
 # Public API
 # ---------------------------------------------------------------------------
 
-def fetch_departures(station, limit=3, window=120):
+def fetch_departures(station, limit=3, window=360):
     """Next `limit` passenger departures from `station` (short/long code)."""
-    params = {"code": station, "timeWindow": window}
+    params = {"code": station, "timeWindow": window, "stpFilter": "WVSC", "detailed": "true"}
     if not _S["window_ok"]:
         params.pop("timeWindow")
     try:
