@@ -335,7 +335,10 @@ def _parse_dt(value):
 
         if dt.tzinfo is None:
             dt = dt.replace(
-                tzinfo=timezone.utc
+                tzinfo=(
+                    LONDON
+                    or timezone.utc
+                )
             )
 
         return dt
@@ -530,8 +533,23 @@ def _departure_times(dep):
         actual,
     )
 
+def _find_station_location(svc, station):
+    """Find the RTT location entry for the requested station."""
 
-def _to_departure(svc, now):
+    locations = svc.get("locations") or []
+
+    for location in locations:
+        loc = location.get("location") or {}
+
+        short_codes = loc.get("shortCodes") or []
+        long_codes = loc.get("longCodes") or []
+
+        if station in short_codes or station in long_codes:
+            return location
+
+    return None
+
+def _to_departure(svc, now, station=None):
     """Convert one RTT location service into a board departure."""
 
     tdat = svc.get("temporalData") or {}
@@ -555,12 +573,9 @@ def _to_departure(svc, now):
             "CHECK",
         )
 
-    if not dep:
-        _debug(
-            f"REJECT {identity}/{headcode}: "
-            "no departure temporal data"
-        )
-        return None
+    # ---------------------------------------------------------------
+    # Basic service filtering
+    # ---------------------------------------------------------------
 
     if meta.get("inPassengerService") is False:
         _debug(
@@ -584,11 +599,17 @@ def _to_departure(svc, now):
 
     display = tdat.get("displayAs")
 
+    # PASS is a valid railway movement. Its timing information is
+    # normally attached to the station's location rather than the
+    # service-level departure object.
+    is_passing = display == "PASS"
+
     if display not in (
         "CALL",
         "STARTS",
         "CANCELLED",
         "DIVERTED",
+        "PASS",
     ):
         _debug(
             f"REJECT {identity}/{headcode}: "
@@ -596,14 +617,62 @@ def _to_departure(svc, now):
         )
         return None
 
-    if tdat.get(
-        "realtimeCallType"
-    ) == "OPERATIONAL_ONLY":
+    if (
+        tdat.get("realtimeCallType")
+        == "OPERATIONAL_ONLY"
+    ):
         _debug(
             f"REJECT {identity}/{headcode}: "
             "operational-only call"
         )
         return None
+
+    # ---------------------------------------------------------------
+    # Find the actual station location
+    # ---------------------------------------------------------------
+
+    station_location = None
+
+    if station:
+        station_location = _find_station_location(
+            svc,
+            station,
+        )
+
+    # PASS services normally have their timing data here.
+    if is_passing and station_location:
+        station_tdat = (
+            station_location.get(
+                "temporalData"
+            )
+            or {}
+        )
+
+        station_dep = (
+            station_tdat.get("departure")
+            or {}
+        )
+
+        station_arr = (
+            station_tdat.get("arrival")
+            or {}
+        )
+
+        # Prefer departure, then arrival.
+        if station_dep:
+            dep = station_dep
+        elif station_arr:
+            dep = station_arr
+
+        _debug(
+            f"PASS LOCATION {identity}/{headcode}: "
+            f"departure={station_tdat.get('departure')} "
+            f"arrival={station_tdat.get('arrival')}"
+        )
+
+    # ---------------------------------------------------------------
+    # Departure timing
+    # ---------------------------------------------------------------
 
     sched_s = (
         dep.get("scheduleAdvertised")
@@ -611,25 +680,33 @@ def _to_departure(svc, now):
     )
 
     sched = _parse_dt(sched_s)
-    hhmm = _hhmm(sched_s)
 
-    if not sched or not hhmm:
+    if not sched:
         _debug(
             f"REJECT {identity}/{headcode}: "
             f"invalid scheduled departure={sched_s!r}"
         )
         return None
 
-    scheduled_ts, expected_ts, actual_ts = (
-        _departure_times(dep)
+    scheduled_ts = sched.timestamp()
+
+    forecast_ts = (
+        _timestamp(
+            dep.get("realtimeForecast")
+        )
+        or _timestamp(
+            dep.get("realtimeEstimate")
+        )
     )
 
-    if scheduled_ts is None:
-        _debug(
-            f"REJECT {identity}/{headcode}: "
-            "could not parse scheduled timestamp"
-        )
-        return None
+    actual_ts = _timestamp(
+        dep.get("realtimeActual")
+    )
+
+    expected_ts = (
+        forecast_ts
+        or scheduled_ts
+    )
 
     cancelled = (
         bool(dep.get("isCancelled"))
@@ -649,18 +726,37 @@ def _to_departure(svc, now):
         tz=timezone.utc,
     )
 
+    expected_dt = (
+        datetime.fromtimestamp(
+            expected_ts,
+            tz=timezone.utc,
+        )
+        if expected_ts is not None
+        else None
+    )
+
+    actual_dt = (
+        datetime.fromtimestamp(
+            actual_ts,
+            tz=timezone.utc,
+        )
+        if actual_ts is not None
+        else None
+    )
+
     _debug(
         f"TIMES {identity}/{headcode}: "
+        f"passing={is_passing} "
         f"now={now_dt.isoformat()} "
         f"scheduled={scheduled_dt.isoformat()} "
         f"expected="
-        f"{datetime.fromtimestamp(expected_ts, tz=timezone.utc).isoformat() if expected_ts else None} "
+        f"{expected_dt.isoformat() if expected_dt else None} "
         f"actual="
-        f"{datetime.fromtimestamp(actual_ts, tz=timezone.utc).isoformat() if actual_ts else None}"
+        f"{actual_dt.isoformat() if actual_dt else None}"
     )
 
     # ---------------------------------------------------------------
-    # Actual departure
+    # Already departed
     # ---------------------------------------------------------------
 
     if actual_ts is not None:
@@ -675,10 +771,10 @@ def _to_departure(svc, now):
         expected_ts = actual_ts
 
     # ---------------------------------------------------------------
-    # Realtime expected departure
+    # Future expected time
     # ---------------------------------------------------------------
 
-    elif expected_ts is not None:
+    else:
         age = now - expected_ts
 
         if age > STALE_SERVICE_GRACE:
@@ -697,38 +793,11 @@ def _to_departure(svc, now):
         )
 
     # ---------------------------------------------------------------
-    # No realtime data
-    # ---------------------------------------------------------------
-
-    else:
-        age = now - scheduled_ts
-
-        if age > STALE_SERVICE_GRACE:
-            _debug(
-                f"REJECT {identity}/{headcode}: "
-                f"scheduled departure was "
-                f"{int(age)}s ago "
-                f"with no realtime data"
-            )
-            return None
-
-        expected_ts = scheduled_ts
-
-        _debug(
-            f"KEEP {identity}/{headcode}: "
-            "using scheduled departure because "
-            "no realtime time was available"
-        )
-
-    # ---------------------------------------------------------------
     # Cancelled services
     # ---------------------------------------------------------------
 
     if cancelled:
-        if (
-            expected_ts is None
-            or expected_ts < now
-        ):
+        if expected_ts < now:
             _debug(
                 f"REJECT {identity}/{headcode}: "
                 "cancelled and no longer in the future"
@@ -737,8 +806,7 @@ def _to_departure(svc, now):
 
         _debug(
             f"KEEP {identity}/{headcode}: "
-            "cancelled but RTT still reports a "
-            "future expected time"
+            "cancelled but future"
         )
 
     # ---------------------------------------------------------------
@@ -828,6 +896,23 @@ def _to_departure(svc, now):
 
     pm = lmeta.get("platform") or {}
 
+    # PASS may have platform data on the station location.
+    if station_location:
+        station_lmeta = (
+            station_location.get(
+                "locationMetadata"
+            )
+            or {}
+        )
+
+        station_pm = (
+            station_lmeta.get("platform")
+            or {}
+        )
+
+        if station_pm:
+            pm = station_pm
+
     platform = str(
         pm.get("actual")
         or pm.get("forecast")
@@ -865,13 +950,16 @@ def _to_departure(svc, now):
     # ---------------------------------------------------------------
 
     d = {
-        "scheduled_time": hhmm,
-        "planned_time": hhmm,
+        "scheduled_time": _hhmm(sched_s),
+        "planned_time": _hhmm(sched_s),
         "destination_name": dest,
         "platform": platform,
+
         "is_cancelled": cancelled,
         "is_delayed": delayed,
         "is_tbc": False,
+        "is_passing": is_passing,
+
         "delay_minutes": mins,
 
         "headcode": (
@@ -910,16 +998,29 @@ def _to_departure(svc, now):
 
         "note_lines": [],
 
-        "_loc_status": tdat.get(
-            "status"
+        "_loc_status": (
+            station_tdat.get("status")
+            if is_passing and station_location
+            else tdat.get("status")
         ),
 
         "_plat_planned": pm.get(
             "planned"
         ),
 
-        "_alloc_index": lmeta.get(
-            "allocationIndex"
+        "_alloc_index": (
+            (
+                station_location.get(
+                    "locationMetadata"
+                )
+                or {}
+            ).get(
+                "allocationIndex"
+            )
+            if is_passing and station_location
+            else lmeta.get(
+                "allocationIndex"
+            )
         ),
 
         "_scheduled_ts": scheduled_ts,
@@ -938,11 +1039,7 @@ def _to_departure(svc, now):
 
     d["note_lines"] = _notes(d)
 
-    sort_key = (
-        expected_ts
-        if expected_ts is not None
-        else scheduled_ts
-    )
+    sort_key = expected_ts
 
     expected_raw = (
         dep.get("realtimeActual")
@@ -950,11 +1047,15 @@ def _to_departure(svc, now):
         or dep.get("realtimeEstimate")
         or sched_s
     )
-    expected_hhmm = _hhmm(expected_raw)
+
+    expected_hhmm = _hhmm(
+        expected_raw
+    )
 
     _debug(
         f"ACCEPT {identity}/{headcode}: "
-        f"scheduled={hhmm} "
+        f"passing={is_passing} "
+        f"scheduled={_hhmm(sched_s)} "
         f"expected={expected_hhmm} "
         f"delay={mins} "
         f"cancelled={cancelled} "
@@ -1440,6 +1541,7 @@ def fetch_departures(
         result = _to_departure(
             svc,
             now,
+            station,
         )
 
         if result:
