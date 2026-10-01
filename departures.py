@@ -52,6 +52,7 @@ THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, THIS_DIR)
 
 from api import (
+    PASS_WARNING_WINDOW,
     board_signature,
     calling_display_text,
     enrich_with_timetables,
@@ -61,6 +62,7 @@ from api import (
     format_console,
     format_departure,
     formation_of,
+    is_passing_service,
     live_status,
     next_passing_warning,
 )
@@ -451,6 +453,10 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     page_since = time.time()
     scroll_need = 0.0   # seconds the current page needs for one full scroll
     was_held = False
+    # Effective page cycle, refreshed every frame: page 3 (formation)
+    # drops out while the lead service is a passing one. Read by
+    # page_label_geom, so it must exist before the first draw call.
+    pages_now = list(args.pages)
 
     control_path = os.path.join(THIS_DIR, "control.json")
 
@@ -542,7 +548,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     def page_label_geom(page):
         """Measure the page indicator without drawing it."""
         spec = L["page_num"]
-        lab = f"{page}/{len(args.pages)}"
+        lab = f"{page}/{len(pages_now)}"
         fnt = F[spec["font"]]
         w = text_width(graphics, offscreen, fnt, C["text"], lab)
         return lab, fnt, resolve_x(spec["x"], w, width), w, \
@@ -957,11 +963,24 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             last_fetch = now
 
         # --- page selection ------------------------------------------
+        # A formation diagram is meaningless for a train that does not
+        # stop: while the lead service is passing, page 3 leaves the
+        # cycle (never go blank -- fall back to the board). Previews
+        # (--once, one explicit page) always render what was asked for.
+        if (board and not getattr(args, "once", False)
+                and is_passing_service(board[0])):
+            pages_now = [p for p in args.pages if p != 3] or [1]
+        else:
+            pages_now = list(args.pages)
         held = paused in (1, 2, 3) and not getattr(
             args, "ignore_control", False)
         if held:
-            # held from the web UI (control.json): stay put
-            cur_page = paused
+            if paused == 3 and 3 not in pages_now:
+                # held formation page suppressed while the lead passes
+                cur_page = pages_now[0]
+            else:
+                # held from the web UI (control.json): stay put
+                cur_page = paused
             was_held = True
         else:
             if was_held:
@@ -970,15 +989,15 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 page_since = now
             # never leave a page before its scrolling text has made one
             # full pass (scroll_need is set by draw_scroll last frame)
-            if len(args.pages) > 1 and now - page_since >= max(
+            if len(pages_now) > 1 and now - page_since >= max(
                     args.page_seconds, scroll_need):
-                page_idx = (page_idx + 1) % len(args.pages)
+                page_idx = (page_idx + 1) % len(pages_now)
                 page_since = now
-            cur_page = args.pages[page_idx % len(args.pages)]
+            cur_page = pages_now[page_idx % len(pages_now)]
 
         if preview_frac is not None:
             frac = preview_frac
-        elif len(args.pages) < 2:
+        elif len(pages_now) < 2:
             frac = None
         elif held:
             frac = 1.0
@@ -989,9 +1008,18 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         scroll_need = 0.0
         offscreen.Fill(0, 0, 0)
 
-        # Safety takeover: a non-stopping service due within ~3 min
-        # replaces every page with the stand-back warning.
-        passing = next_passing_warning(board)
+        # Safety takeover: a non-stopping service due within the
+        # warning window (--passing-warning-time) replaces every page
+        # with the stand-back warning.
+        warn_secs = getattr(args, "passing_warning_time",
+                            PASS_WARNING_WINDOW)
+        try:
+            warn_secs = float(warn_secs)
+        except (TypeError, ValueError):
+            warn_secs = float(PASS_WARNING_WINDOW)
+        if warn_secs < 0:
+            warn_secs = float(PASS_WARNING_WINDOW)
+        passing = next_passing_warning(board, window=warn_secs)
         if passing is None:
             draw_passing_warning._announced = None
         if passing is not None:
@@ -1056,6 +1084,12 @@ def main():
     p.add_argument("--page-seconds", type=float, default=10,
                    help="Minimum seconds per page when cycling (a page with "
                         "scrolling text stays until it has scrolled once)")
+    p.add_argument("--passing-warning-time", type=float,
+                   default=PASS_WARNING_WINDOW,
+                   help="Seconds before a passing train to show the "
+                        "fullscreen stand-back warning (default 180). "
+                        "While the lead service is passing, page 3 "
+                        "(formation) is skipped.")
     p.add_argument("--mock", action="store_true",
                    help="Print to console instead of driving the LED matrix")
     p.add_argument("--once", action="store_true",
@@ -1174,7 +1208,7 @@ def main():
                 notes = [d["calling_at"]]
             for n in notes[:2]:
                 print(f"  {n}")
-        if 3 in args.pages and board:
+        if 3 in args.pages and board and not is_passing_service(board[0]):
             d = board[0]
             t, dest, _, _ = format_departure(d)
             cars, label = formation_of(

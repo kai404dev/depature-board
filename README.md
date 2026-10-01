@@ -6,8 +6,10 @@ Two pages cycle on the panels: the departures board and a train
 formation diagram (the next-departure-big page 2 is disabled by
 default — re-enable with `--pages 1,2,3`). A non-stopping service
 shows "This service does not stop here" instead of calling-at points,
-and within 3 minutes of passing through it takes over the whole screen
-with a bordered stand-back warning.
+and the formation page is skipped while the lead service is passing.
+Within the warning window (`--passing-warning-time`, seconds, default
+180) of passing through it takes over the whole screen with a bordered
+stand-back warning.
 A web UI on port 4000 previews every page and live-edits the layout —
 tweaks reach the real LEDs within about a second, no restart.
 
