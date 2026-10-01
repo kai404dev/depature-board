@@ -27,6 +27,10 @@ Shorthand also works: "43: Sheffield via Dronfield".
 Or a JSON file: [{"route": "43", "destination": "Sheffield",
 "via": "Dronfield"}, ...] ("dest" accepted for "destination").
 
+Image mode: --image bitmap/fluffynet.png shows a PNG scaled to the
+panel instead of blinds (--image-fit fit|fill|stretch, default fit).
+Repeatable, rotates like services. PNG decoding is stdlib only.
+
 Modes:
   --mock     print to console instead of driving the LED matrix
   --preview  ASCII preview of the blind (no hardware needed)
@@ -275,6 +279,220 @@ def text_width(graphics, canvas, font, color, text):
     return graphics.DrawText(canvas, font, 0, -100, color, text)
 
 
+# ---------------------------------------------------------------------------
+# PNG images (stdlib only): decode + scale to the panel
+# ---------------------------------------------------------------------------
+
+def _paeth(a, b, c):
+    p = a + b - c
+    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    if pb <= pc:
+        return b
+    return c
+
+
+def decode_png(path):
+    """Minimal PNG decoder, stdlib only. Returns (w, h, RGB bytearray).
+
+    Handles non-interlaced colour types 0/2/3/4/6 at bit depths
+    1/2/4/8 (16-bit keeps the high byte). Alpha is composited onto
+    black. Anything fancier (interlaced, weird chunks) exits with a
+    plain message telling you to re-export the file.
+    """
+    import struct
+    import zlib
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError as e:
+        sys.exit(f"image {path}: {e}")
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        sys.exit(f"image {path}: not a PNG file "
+                 "(convert it to .png first)")
+    pos = 8
+    width = height = bitd = ctype = None
+    idat = bytearray()
+    palette = None
+    pal_alpha = None
+    while pos + 8 <= len(data):
+        (length,) = struct.unpack(">I", data[pos:pos + 4])
+        typ = data[pos + 4:pos + 8]
+        body = data[pos + 8:pos + 8 + length]
+        if len(body) != length:
+            break
+        if typ == b"IHDR":
+            width, height, bitd, ctype, _, _, inter = \
+                struct.unpack(">IIBBBBB", body)
+            if inter != 0:
+                sys.exit(f"image {path}: interlaced PNGs are not "
+                         f"supported (re-export without interlacing)")
+            if ctype not in (0, 2, 3, 4, 6) or bitd not in \
+                    (1, 2, 4, 8, 16):
+                sys.exit(f"image {path}: unsupported PNG "
+                         f"(type {ctype}, {bitd}-bit)")
+        elif typ == b"PLTE":
+            palette = body
+        elif typ == b"tRNS":
+            pal_alpha = body
+        elif typ == b"IDAT":
+            idat += body
+        elif typ == b"IEND":
+            break
+        pos += 12 + length
+    if width is None:
+        sys.exit(f"image {path}: no IHDR found, file is corrupt?")
+    try:
+        raw = zlib.decompress(bytes(idat))
+    except Exception:
+        sys.exit(f"image {path}: corrupt image data")
+    spp = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[ctype]
+    if bitd == 16:
+        stride = width * spp * 2
+        fbpp = spp * 2
+    elif bitd >= 8:
+        stride = width * spp
+        fbpp = spp
+    else:
+        stride = (width * bitd * spp + 7) // 8
+        fbpp = 1
+    out = bytearray(width * height * 3)
+    prev = bytearray(stride)
+    p = 0
+    for y in range(height):
+        f = raw[p]
+        p += 1
+        line = bytearray(raw[p:p + stride])
+        p += stride
+        if f == 1:
+            for i in range(fbpp, stride):
+                line[i] = (line[i] + line[i - fbpp]) & 255
+        elif f == 2:
+            for i in range(stride):
+                line[i] = (line[i] + prev[i]) & 255
+        elif f == 3:
+            for i in range(stride):
+                a = line[i - fbpp] if i >= fbpp else 0
+                line[i] = (line[i] + ((a + prev[i]) >> 1)) & 255
+        elif f == 4:
+            for i in range(stride):
+                a = line[i - fbpp] if i >= fbpp else 0
+                b = prev[i]
+                c = prev[i - fbpp] if i >= fbpp else 0
+                line[i] = (line[i] + _paeth(a, b, c)) & 255
+        elif f != 0:
+            sys.exit(f"image {path}: bad filter {f} on row {y}")
+        prev = line
+        o = y * width * 3
+        if bitd == 16:
+            s = 0
+            for x in range(width):
+                v = line[s:s + spp * 2:2]
+                s += spp * 2
+                if ctype == 0:
+                    out[o:o + 3] = bytes((v[0], v[0], v[0]))
+                elif ctype == 2:
+                    out[o:o + 3] = bytes(v[:3])
+                elif ctype == 4:
+                    g, a = v[0], v[1]
+                    g = (g * a + 127) // 255
+                    out[o:o + 3] = bytes((g, g, g))
+                else:
+                    r, g, b, a = v[0], v[1], v[2], v[3]
+                    out[o:o + 3] = bytes(((r * a + 127) // 255,
+                                          (g * a + 127) // 255,
+                                          (b * a + 127) // 255))
+                o += 3
+        elif bitd == 8:
+            s = 0
+            for x in range(width):
+                if ctype == 0:
+                    g = line[s]
+                    s += 1
+                    out[o:o + 3] = bytes((g, g, g))
+                elif ctype == 2:
+                    out[o:o + 3] = bytes(line[s:s + 3])
+                    s += 3
+                elif ctype == 3:
+                    i = line[s]
+                    s += 1
+                    r, g, b = (palette[3 * i:3 * i + 3]
+                               if palette and 3 * i + 2 < len(palette)
+                               else b"\x00\x00\x00")
+                    a = pal_alpha[i] if pal_alpha and i < len(
+                        pal_alpha) else 255
+                    out[o:o + 3] = bytes(((r * a + 127) // 255,
+                                          (g * a + 127) // 255,
+                                          (b * a + 127) // 255))
+                elif ctype == 4:
+                    g, a = line[s], line[s + 1]
+                    s += 2
+                    g = (g * a + 127) // 255
+                    out[o:o + 3] = bytes((g, g, g))
+                else:
+                    r, g, b, a = line[s:s + 4]
+                    s += 4
+                    out[o:o + 3] = bytes(((r * a + 127) // 255,
+                                          (g * a + 127) // 255,
+                                          (b * a + 127) // 255))
+                o += 3
+        else:
+            acc, bits = 0, 0
+            s = 0
+            for x in range(width):
+                if bits == 0:
+                    acc, bits = line[s], 8
+                    s += 1
+                bits -= bitd
+                i = (acc >> bits) & ((1 << bitd) - 1)
+                if bitd < 8:
+                    i = (i * 255 + ((1 << bitd) - 1) // 2) // \
+                        ((1 << bitd) - 1)
+                if ctype == 3:
+                    r, g, b = (palette[3 * i:3 * i + 3]
+                               if palette and 3 * i + 2 < len(palette)
+                               else b"\x00\x00\x00")
+                    a = pal_alpha[i] if pal_alpha and i < len(
+                        pal_alpha) else 255
+                    out[o:o + 3] = bytes(((r * a + 127) // 255,
+                                          (g * a + 127) // 255,
+                                          (b * a + 127) // 255))
+                else:
+                    out[o:o + 3] = bytes((i, i, i))
+                o += 3
+    return width, height, out
+
+
+def scale_pixels(src, sw, sh, dw, dh, mode):
+    """Nearest-neighbour scale of an RGB bytearray to dw x dh.
+
+    fit: whole image visible, centred on black. fill: cover the
+    panel, cropping the middle. stretch: exact size, aspect ignored.
+    """
+    dst = bytearray(dw * dh * 3)  # black bars by default
+    if mode == "stretch":
+        sx, sy, ox, oy, tw, th = sw / dw, sh / dh, 0, 0, dw, dh
+    else:
+        s = min(dw / sw, dh / sh) if mode == "fit" else \
+            max(dw / sw, dh / sh)
+        tw, th = max(1, int(sw * s)), max(1, int(sh * s))
+        ox, oy = (dw - tw) // 2, (dh - th) // 2
+        sx, sy = sw / tw, sh / th
+    for y in range(th):
+        if not 0 <= oy + y < dh:
+            continue
+        srow = int(y * sy) * sw * 3
+        drow = ((oy + y) * dw + ox) * 3
+        for x in range(tw):
+            if not 0 <= ox + x < dw:
+                continue
+            o = srow + int(x * sx) * 3
+            dst[drow:drow + 3] = src[o:o + 3]
+            drow += 3
+    return dst
+
+
 def run_board(args, services):
     from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 
@@ -300,8 +518,21 @@ def run_board(args, services):
 
     offscreen = matrix.CreateFrameCanvas()
     W, H = offscreen.width, offscreen.height
-    print(f"bus board {W}x{H} services={len(services)}",
-          file=sys.stderr, flush=True)
+
+    # image mode: preload every PNG scaled to the panel once
+    frames = []
+    for ip in (args.image or []):
+        sw, sh, rgb = decode_png(ip)
+        frames.append((ip, sw, sh,
+                       scale_pixels(rgb, sw, sh, W, H, args.image_fit)))
+        print(f"image {ip}: {sw}x{sh} -> {args.image_fit} {W}x{H}",
+              file=sys.stderr, flush=True)
+    if frames:
+        print(f"bus board {W}x{H} images={len(frames)}",
+              file=sys.stderr, flush=True)
+    else:
+        print(f"bus board {W}x{H} services={len(services)}",
+              file=sys.stderr, flush=True)
 
     # Vertical geometry: route digits vertically centred (their lit
     # band sits in the upper part of the doubled glyph box, so the
@@ -413,8 +644,29 @@ def run_board(args, services):
             graphics.DrawText(offscreen, rfont, 1, ry,
                               C["route"], route)
 
+    def blit(frame):
+        for y in range(H):
+            o = y * W * 3
+            for x in range(W):
+                offscreen.SetPixel(x, y, frame[o], frame[o + 1],
+                                   frame[o + 2])
+                o += 3
+
     while True:
         now = time.time()
+        if frames:
+            # image mode: static pictures, rotate if several
+            if len(frames) > 1 and now - idx_since >= args.rotate_seconds:
+                idx = (idx + 1) % len(frames)
+                idx_since = now
+            scroll_need = 0.0
+            offscreen.Fill(0, 0, 0)
+            blit(frames[idx % len(frames)][3])
+            offscreen = matrix.SwapOnVSync(offscreen)
+            if args.once:
+                break
+            time.sleep(0.5)
+            continue
         # one blind at a time; rotate when several services are given.
         # Never leave before scrolling text has made one full pass.
         if len(services) > 1 and \
@@ -440,6 +692,16 @@ def main():
                         '"43|Sheffield|Dronfield, Chesterfield". Repeatable: '
                         'several services rotate. '
                         'Shorthand "43: Sheffield via Dronfield" also works.')
+    p.add_argument("--image", action="append", default=[],
+                   help="Show a PNG image scaled to the panel instead of "
+                        "blinds, e.g. --image bitmap/fluffynet.png. "
+                        "Repeatable: several images rotate. Images take "
+                        "over when given; services are ignored.")
+    p.add_argument("--image-fit", default="fit",
+                   choices=["fit", "fill", "stretch"],
+                   help="How images map to the panel: fit (whole image, "
+                        "centred on black), fill (cover, cropping), "
+                        "stretch (exact panel size)")
     p.add_argument("--services-file", default="",
                    help="JSON file with a list of "
                         '{"route, destination, via} objects')
@@ -500,6 +762,28 @@ def main():
     args = p.parse_args()
 
     services = load_services(args)
+
+    if args.image:
+        if args.mock:
+            for ip in args.image:
+                sw, sh, _ = decode_png(ip)
+                print(f"{ip}: {sw}x{sh} -> {args.image_fit} "
+                      f"{args.led_cols * args.led_chain}"
+                      f"x{args.led_rows}")
+            return
+        if args.preview:
+            import preview
+            W = args.led_cols * args.led_chain
+            H = args.led_rows
+            rec = preview.install(W, H)
+            run_board(args, [])
+            print(f"--- bus image preview ({W}x{H}) ---")
+            # images paint raw pixels: count non-black ones
+            lit = sum(1 for v in rec.paint.values() if v != (0, 0, 0))
+            print(f"  {lit} lit pixels of {W * H}")
+            return
+        run_board(args, [])
+        return
 
     if args.mock:
         print(format_console(services, show_via=args.via))
