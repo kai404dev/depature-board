@@ -1,42 +1,35 @@
 #!/usr/bin/env python3
 """
-Bus departure board for Waveshare RGB-Matrix / rpi-rgb-led-matrix.
+Bus front destination blind replica for RGB LED matrix.
 
-Each service is: route number + destination + via (optional) + due (optional).
+Replicates the amber destination display on the front of a UK bus:
 
-Layout per service (matches the requested format):
+  +------------------------------------------------+
+  | 43   SHEFFIELD                                 |
+  |      via Dronfield, Chesterfield               |
+  +------------------------------------------------+
 
-                destination
-  route-number  via ... here ...
-
-i.e. destination on its own line, then route number on the left with
-the via text next to it. Long lines scroll; the page waits until each
-visible line has scrolled once before rotating.
-
-Provide services in any of these ways (they combine, in order):
-
-  python3 bus-board.py --mock --once \
-    --service "43|Sheffield|Dronfield, Chesterfield|12 min" \
-    --service "44|Chesterfield|Dronfield"
+Route number big on the left, destination big next to it, via points
+smaller along the bottom (scrolls when too long). All amber, like the
+real blinds. Give one service to hold it, or several to rotate like a
+bus cycling through displays.
 
   python3 bus-board.py --mock --once \
-    --services-file buses.json
+    --service "43|Sheffield|Dronfield, Chesterfield"
 
-buses.json shape: [{"route": "43", "destination": "Sheffield",
-"via": "Dronfield", "due": "12 min"}, ...]
-("via" and "due" are optional; "dest" also accepted for "destination".)
+  python3 bus-board.py --mock --once \
+    --service "43|Sheffield|Dronfield, Chesterfield" \
+    --service "X17|Matlock|Rowsley, Darley Dale"
 
-No services given -> built-in demo data so --mock/--preview work.
+Service shape: "ROUTE|DESTINATION|VIA" (VIA optional).
+Shorthand also works: "43: Sheffield via Dronfield".
+Or a JSON file: [{"route": "43", "destination": "Sheffield",
+"via": "Dronfield"}, ...] ("dest" accepted for "destination").
 
-Modes (same spirit as departures.py):
+Modes:
   --mock     print to console instead of driving the LED matrix
-  --preview  ASCII preview of the board (no hardware needed)
+  --preview  ASCII preview of the blind (no hardware needed)
   (default)  drive the LED matrix (needs root for GPIO on a Pi)
-
-Examples:
-  python3 bus-board.py --mock --once
-  python3 bus-board.py --preview --service "43|Sheffield|Dronfield"
-  sudo python3 bus-board.py --led-rows 40 --led-cols 80 --led-chain 3
 """
 
 import argparse
@@ -51,16 +44,15 @@ sys.path.insert(0, THIS_DIR)
 from api import find_font  # reuse font search path (fonts/ next to script)
 
 FONTS = {
-    "dest": "6x12.bdf",      # destination line
-    "via": "5x7.bdf",        # "43  via ..." line
-    "small": "tom-thumb.bdf",  # clock (tiny, shares the last via row)
+    "route": "10x20.bdf",  # route number, big left
+    "dest": "7x14B.bdf",   # destination, big next to route
+    "via": "5x7.bdf",      # via points along the bottom
 }
+AMBER = (255, 140, 0)  # bus blinds are monochrome amber
 COLORS = {
-    "dest": (255, 140, 0),   # orange destination
-    "route": (255, 255, 0),  # yellow route number
-    "via": (255, 140, 0),    # orange via text
-    "due": (60, 255, 60),    # green due time
-    "clock": (255, 140, 0),
+    "route": AMBER,
+    "dest": AMBER,
+    "via": AMBER,
 }
 
 SCROLL_PAUSE0 = 2.5  # sit at the start before scrolling
@@ -69,11 +61,9 @@ SCROLL_SPEED = 20.0  # px per second while scrolling
 
 DEMO = [
     {"route": "43", "destination": "Sheffield",
-     "via": "Dronfield, Chesterfield", "due": "12 min"},
-    {"route": "44", "destination": "Chesterfield",
-     "via": "Dronfield", "due": "25 min"},
+     "via": "Dronfield, Chesterfield"},
     {"route": "X17", "destination": "Matlock",
-     "via": "Rowsley, Darley Dale", "due": "35 min"},
+     "via": "Rowsley, Darley Dale"},
 ]
 
 
@@ -84,18 +74,17 @@ DEMO = [
 def parse_service(s):
     """Parse one --service string.
 
-    Accepted: "route|destination|via|due" (via/due optional).
+    Accepted: "route|destination|via" (via optional).
     Shorthand: "43: Sheffield via Dronfield" -> route=43,
     destination=Sheffield, via=Dronfield.
     """
     s = s.strip()
     if "|" in s:
         parts = [p.strip() for p in s.split("|")]
-        while len(parts) < 4:
+        while len(parts) < 3:
             parts.append("")
-        route, dest, via, due = parts[:4]
-        return {"route": route, "destination": dest,
-                "via": via, "due": due}
+        route, dest, via = parts[:3]
+        return {"route": route, "destination": dest, "via": via}
     # shorthand "ROUTE: rest" with optional " via VIA"
     route, rest = "", s
     if ":" in s:
@@ -105,8 +94,7 @@ def parse_service(s):
     if " via " in low:
         idx = low.index(" via ")
         dest, via = rest[:idx].strip(), rest[idx + 5:].strip()
-    return {"route": route, "destination": dest,
-            "via": via, "due": ""}
+    return {"route": route, "destination": dest, "via": via}
 
 
 def load_services(args):
@@ -126,7 +114,6 @@ def load_services(args):
                 "destination": str(d.get("destination",
                                          d.get("dest", ""))),
                 "via": str(d.get("via", "")),
-                "due": str(d.get("due", d.get("time", ""))),
             })
     for s in args.service or []:
         services.append(parse_service(s))
@@ -147,14 +134,11 @@ def format_console(services):
     out = []
     for svc in services:
         route = (svc.get("route") or "").strip()
-        dest = (svc.get("destination") or "").strip()
+        dest = (svc.get("destination") or "").strip().upper()
         via = via_text(svc)
-        due = (svc.get("due") or "").strip()
-        out.append(f"{dest}")
-        line2 = f"{route}  {via}".rstrip()
-        if due:
-            line2 = f"{line2}  [{due}]" if line2.strip() else due
-        out.append(line2)
+        out.append(f"[{route}] {dest}")
+        if via:
+            out.append(f"  {via}")
     return "\n".join(out)
 
 
@@ -256,73 +240,48 @@ def run_board(args, services):
             for xx in range(max(0, max_x + 1), W):
                 offscreen.SetPixel(xx, yy, 0, 0, 0)
 
-    def draw_service(svc, y_dest, y_via, clock_band=None, clock_x=None):
-        """Two lines: destination, then 'ROUTE  via ...' (+ due right)."""
-        dest = (svc.get("destination") or "").strip()
+    def draw_blind(svc):
+        """One front-blind: big route left, big destination next to it,
+        via points smaller along the bottom. Route stays put; dest and
+        via scroll inside their cells when too long."""
         route = (svc.get("route") or "").strip()
+        dest = (svc.get("destination") or "").strip()
+        if args.dest_upper:
+            dest = dest.upper()
         via = via_text(svc)
-        due = (svc.get("due") or "").strip()
 
-        # line 1: destination (aligned per --dest-align, scrolls if long)
-        draw_scroll(F["dest"], C["dest"], dest, y_dest, W - 1,
-                    xspec=args.dest_align)
+        # main row: route fixed left, destination flows after it.
+        # Destination first: its scroll edge-blanking clears the row
+        # outside its cell, then the route is painted fresh on top so
+        # a long scrolling destination can never chew into it.
+        w_route = 0
+        if route:
+            w_route = text_width(graphics, offscreen, F["route"],
+                                 C["route"], route)
+        dest_x0 = 1 if not route else 1 + w_route + args.gap
+        draw_scroll(F["dest"], C["dest"], dest, args.dest_y,
+                    W - 1, x0=dest_x0)
+        if route:
+            graphics.DrawText(offscreen, F["route"], 1, args.main_y,
+                              C["route"], route)
 
-        # line 2: route number left, via text after it, due right-aligned
-        fnt = F["via"]
-        route_part = (route + "  ") if route else ""
-        w_route = text_width(graphics, offscreen, fnt,
-                             C["route"], route_part) if route_part else 0
-        due_part = (f" {due}") if due else ""
-        w_due = text_width(graphics, offscreen, fnt,
-                           C["due"], due_part) if due_part else 0
-        max_x = W - 2 - w_due  # 1px gap before the right-aligned due time
-        if clock_band is not None and clock_x is not None:
-            # via row shares the clock row: keep clear of the clock
-            v_top = y_via - fnt.height + 2
-            v_bot = y_via + 1
-            c_top, c_bot = clock_band
-            if v_top <= c_bot and c_top <= v_bot:
-                max_x = min(max_x, clock_x - 2)
-        draw_scroll(fnt, C["via"], via, y_via, max_x, x0=1 + w_route)
-        if route_part:
-            graphics.DrawText(offscreen, fnt, 1, y_via,
-                              C["route"], route_part)
-        if due_part:
-            graphics.DrawText(offscreen, fnt, W - 1 - w_due, y_via,
-                              C["due"], due_part)
+        # via row along the bottom, full width
+        if via:
+            draw_scroll(F["via"], C["via"], via, args.via_y, W - 1)
 
-    per_page = max(1, args.per_page)
     while True:
         now = time.time()
-        # rotate window of services
-        pages = max(1, (len(services) + per_page - 1) // per_page)
-        if len(services) > per_page and \
+        # one blind at a time; rotate when several services are given.
+        # Never leave before scrolling text has made one full pass.
+        if len(services) > 1 and \
                 now - idx_since >= max(args.rotate_seconds, scroll_need):
-            idx = (idx + 1) % pages
+            idx = (idx + 1) % len(services)
             idx_since = now
             page_since = now
-        window = services[idx * per_page:(idx + 1) * per_page]
 
         scroll_need = 0.0
         offscreen.Fill(0, 0, 0)
-
-        # clock geometry first so the last via row can keep clear of it
-        clk = time.strftime("%H:%M:%S")
-        cw = text_width(graphics, offscreen, F["small"],
-                        C["clock"], clk)
-        clock_x = resolve_x("center", cw, W)
-        clock_y = H - 1
-        cfont = F["small"]
-        clock_band = (clock_y - cfont.height + 2, clock_y + 1)
-
-        y = args.top_y
-        for svc in window:
-            draw_service(svc, y, y + args.via_dy,
-                         clock_band=clock_band, clock_x=clock_x)
-            y += args.pitch
-
-        graphics.DrawText(offscreen, F["small"], clock_x, clock_y,
-                          C["clock"], clk)
+        draw_blind(services[idx % len(services)])
 
         offscreen = matrix.SwapOnVSync(offscreen)
         if args.once:
@@ -331,29 +290,33 @@ def run_board(args, services):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Bus departure board")
+    p = argparse.ArgumentParser(description="Bus front destination blind")
     p.add_argument("--service", action="append", default=[],
-                   help='One service as "ROUTE|DEST|VIA|DUE", e.g. '
-                        '"43|Sheffield|Dronfield|12 min". Repeatable. '
+                   help='One blind as "ROUTE|DEST|VIA", e.g. '
+                        '"43|Sheffield|Dronfield, Chesterfield". Repeatable: '
+                        'several services rotate. '
                         'Shorthand "43: Sheffield via Dronfield" also works.')
     p.add_argument("--services-file", default="",
                    help="JSON file with a list of "
-                        '{"route, destination, via, due} objects')
+                        '{"route, destination, via} objects')
     p.add_argument("--limit", type=int, default=6)
-    p.add_argument("--per-page", type=int, default=2,
-                   help="Services shown at once (each takes 2 lines)")
     p.add_argument("--rotate-seconds", type=float, default=5,
-                   help="Seconds per window when services exceed --per-page")
-    p.add_argument("--dest-align", default="right",
-                   choices=["left", "center", "right"],
-                   help="Alignment of the destination line (default right, "
-                        "as in the '              destinations' sketch)")
-    p.add_argument("--top-y", type=int, default=8,
-                   help="Baseline of the first destination line")
-    p.add_argument("--via-dy", type=int, default=9,
-                   help="Pixels from destination baseline to via baseline")
-    p.add_argument("--pitch", type=int, default=22,
-                   help="Pixels per service (destination + via block)")
+                   help="Seconds per blind when several services are given "
+                        "(a blind with scrolling text stays until it has "
+                        "scrolled once)")
+    p.add_argument("--dest-upper", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="Uppercase the destination like real blinds "
+                        "(--no-dest-upper to keep as typed)")
+    p.add_argument("--main-y", type=int, default=20,
+                   help="Baseline of the route/destination row")
+    p.add_argument("--dest-y", type=int, default=20,
+                   help="Baseline of the destination (tweak to align "
+                        "with the route font)")
+    p.add_argument("--via-y", type=int, default=36,
+                   help="Baseline of the via row")
+    p.add_argument("--gap", type=int, default=8,
+                   help="Pixels between route number and destination")
     p.add_argument("--mock", action="store_true",
                    help="Print to console instead of driving the matrix")
     p.add_argument("--once", action="store_true",
