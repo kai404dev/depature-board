@@ -1,4 +1,3 @@
-```python
 #!/usr/bin/env python3
 """Realtime Trains (next-generation API) data layer for the departures board.
 
