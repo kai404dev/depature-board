@@ -1226,19 +1226,9 @@ def main():
     if args.source == "rtt" and not token:
         sys.exit("RTT needs a token: put RTT_TOKEN=... in .env next to "
                  "departures.py (or set $RTT_TOKEN / rtt_token.txt)")
-    import darwin
-    darwin.set_token(darwin.load_token())  # optional: carriage loadings
-    src, nchars = darwin.token_info()
-    if darwin.configured():
-        print(f"Darwin loadings enabled (token from {src}, "
-              f"{nchars} chars)", file=sys.stderr, flush=True)
-        warn = darwin.token_warning()
-        if warn:
-            print(f"Darwin token WARNING: {warn}",
-                  file=sys.stderr, flush=True)
-    else:
-        print("Darwin loadings off (no token: set $DARWIN_TOKEN, "
-              ".env, or darwin_token.txt)", file=sys.stderr, flush=True)
+    # Kafka loadings start lazily on first enrichment (needs
+    # DARWIN_KAFKA_* in .env + pip install kafka-python); without
+    # them the board simply keeps default loadings.
 
     def get_board_data(source=None):
         if (source or args.source) == "rtt":

@@ -39,42 +39,21 @@ tweaks reach the real LEDs within about a second, no restart.
 `--preview` prints a to-scale ASCII map of every page with element
 bounds and overlap warnings — the fastest way to check spacing.
 
-## Carriage loadings (Darwin via RDM, RTT mode only)
+## Carriage loadings (Darwin Kafka push-port, RTT mode only)
 
 RTT's Know Your Train gives coach count and facilities but no seating
-availability. The page-3 fill levels come from National Rail Darwin,
-which publishes per-coach loadings (0–100) wherever the train
-operator feeds them in (e.g. Avanti, CrossCountry — but not every
-operator, and heritage railways not at all):
-
-1. Register at `raildata.org.uk` (consumer access is enough) and
-   subscribe to a Live Departure Board product — departures-only or
-   arrivals+departures, both work with no extra configuration (free,
-   approved immediately).
-2. Open the product → **Specification** tab → copy the **Consumer key**.
-3. Put `DARWIN_TOKEN=<consumer key>` in `.env` next to
-   `departures.py` (or set `$DARWIN_TOKEN` / create
-   `darwin_token.txt`).
-4. Run with `--source rtt`. The board matches each RTT departure to
-   Darwin by scheduled time + operator + destination at the same
-   station and fills the formation cars with the real loadings.
-
-Without a key, or where Darwin has no data, the diagram silently
-keeps its defaults. Darwin takes over no other display data —
-times, calling points and statuses stay on RTT.
-
-## Carriage loadings via Kafka push-port (alternative)
-
-If your RDM subscription is the Darwin push-port (Kafka) product
-instead of the REST board product, the board can sip loadings straight
-from the firehose — no REST key needed:
+availability. The page-3 fill levels come from the National Rail
+Darwin push-port, which streams per-coach loadings (0–100) wherever
+the train operator feeds them in (e.g. Avanti, CrossCountry — but not
+every operator, and heritage railways not at all):
 
 ```bash
 pip install kafka-python
 ```
 
 ```ini
-# .env (consumer group/username/password from the RDM product page)
+# .env (consumer group/username/password from the RDM
+# "Darwin Real Time Train Information" product page)
 DARWIN_KAFKA_GROUP=SC-...
 DARWIN_KAFKA_USER=...
 DARWIN_KAFKA_PASSWORD=...
@@ -87,27 +66,16 @@ A background thread follows schedule, formation and loading messages,
 matches your RTT departures by headcode + date, and fills page 3.
 Learned schedules persist in untracked `darwin_kafka_state.json`, so a
 restart keeps working without waiting for the overnight timetable
-load. Never share these credentials (treat a posted password as
-burned and rotate it in RDM).
+load. Without credentials (or the package) the diagram silently keeps
+its defaults. Never share these credentials (treat a posted password
+as burned and rotate it in RDM).
 
-If your product's API path differs from the default (compare the
-**Try it** URL on RDM with the `base:` line from the test below),
-set `DARWIN_BASE_URL=...` the same way. The board also negotiates
-across every known LDBWS product path and board operation by itself,
-so it usually just works.
-
-Test it directly on the Pi (never prints the key itself):
+Watch it learning live on the Pi (shows message counts and stored
+trains, never credentials):
 
 ```bash
-python3 darwin.py SOT
+python3 darwin_kafka.py --secs 60
 ```
-
-It reports where the key came from, lists the next services found,
-and shows per-coach loadings (`A:80, B:20, ...`, `-` unknown).
-`HTTP 401` means the key is wrong or missing; `HTTP 404` usually
-means the base path doesn't match your product — set
-`DARWIN_BASE_URL` (the board retries the other known path
-automatically).
 
 ## Pi setup
 

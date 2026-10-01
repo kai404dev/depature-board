@@ -26,8 +26,6 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
-import darwin
-
 try:
     from zoneinfo import ZoneInfo
 
@@ -1808,17 +1806,14 @@ def enrich(
                 station,
             )
 
-        # Carriage loadings for the page-3 diagram: live Kafka
-        # push-port first, REST LDBWS as fallback. Both are no-ops
-        # without their credentials; skipped for passing services.
+        # Carriage loadings for the page-3 diagram from the Darwin
+        # Kafka push-port. No-op without credentials or the
+        # kafka-python package; skipped for passing services.
         try:
             import darwin_kafka
-            loaded = darwin_kafka.enrich_loading(d, station)
+            darwin_kafka.enrich_loading(d, station)
         except Exception as e:
             _debug(f"kafka enrich failed: {e}")
-            loaded = False
-        if not loaded:
-            darwin.enrich_loading(d, station)
 
     return deps
 

@@ -13,7 +13,7 @@ keeps per-train carriage loadings in memory:
 
 An RTT departure is matched by headcode (+ operating date, TOC as a
 sanity check) to a Darwin rid; the latest loadings for that rid feed
-the page-3 diagram via the same formation shape darwin.py uses.
+the page-3 diagram.
 
 Config (environment first, then .env next to this file):
   DARWIN_KAFKA_BOOTSTRAP  default pkc-z3p1v0...confluent.cloud:9092
@@ -492,12 +492,59 @@ def loadings_for(rid):
     return None, ""
 
 
+def _capacity_of(loading):
+    if loading is None:
+        return None
+    try:
+        return max(0.0, min(1.0, float(loading) / 100.0))
+    except (TypeError, ValueError):
+        return None
+
+
+def _label(n):
+    return f"{n} coach" + ("" if n == 1 else "es")
+
+
+def apply_formation(dep, formation):
+    """Merge coach loadings into the departure's formation cars.
+
+    Same coach count: keep the existing cars (RTT class/wheelchair
+    flags) and just fill in capacities. Different count: rebuild from
+    the loadings (class from coachClass, capacity from loading).
+    Returns the number of cars given a real loading, 0 when nothing
+    usable.
+    """
+    coaches = (formation or {}).get("coaches") or []
+    if not coaches:
+        return 0
+    cars = ((dep.get("formation") or {}).get("cars")) or []
+    loadings = [_capacity_of(c.get("loading")) for c in coaches]
+    known = sum(1 for v in loadings if v is not None)
+    if not known:
+        return 0
+    if cars and len(cars) == len(coaches):
+        for car, cap in zip(cars, loadings):
+            if cap is not None:
+                car["capacity"] = cap
+    else:
+        cars = []
+        for c, cap in zip(coaches, loadings):
+            cls = (c.get("class") or "").strip().lower()
+            cars.append({
+                "first": cls in ("first", "mixed"),
+                "accessible": False,
+                "capacity": cap if cap is not None else 0.10,
+            })
+        dep["formation"] = {"cars": cars, "label": _label(len(cars))}
+    dep["loading_source"] = "darwin-kafka"
+    return known
+
+
 def enrich_loading(dep, station_crs=None):
     """Attach Kafka loadings to one RTT departure. Never raises.
 
     station_crs is currently unused (loadings track the train, latest
-    report wins) but kept for a common signature with darwin.py.
-    Returns True when real loadings were applied.
+    report wins). Returns True when real loadings were applied.
     """
     try:
         if not isinstance(dep, dict):
@@ -520,11 +567,10 @@ def enrich_loading(dep, station_crs=None):
                 return False
             for car in cars:
                 car["capacity"] = formation["uniform"]
-            dep["loading_source"] = "darwin-" + source
+            dep["loading_source"] = "darwin-kafka-train"
             return True
-        import darwin
-        if darwin.apply_formation(dep, formation):
-            dep["loading_source"] = "darwin-" + source
+        if apply_formation(dep, formation):
+            dep["loading_source"] = "darwin-kafka"
             _debug(f"KAFKA LOADINGS {dep.get('headcode')} rid={rid}")
             return True
         return False
