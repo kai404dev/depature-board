@@ -456,7 +456,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         control.json means keep cycling. Returns paused page or None.
         """
         nonlocal layout_mt, control_mt, paused_page, last_hot_check
-        nonlocal last_hot_err
+        nonlocal last_hot_err, ctl_source
         now = time.time()
         if now - last_hot_check < 0.5:
             return paused_page
