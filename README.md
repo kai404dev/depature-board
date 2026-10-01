@@ -39,43 +39,34 @@ tweaks reach the real LEDs within about a second, no restart.
 `--preview` prints a to-scale ASCII map of every page with element
 bounds and overlap warnings — the fastest way to check spacing.
 
-## Carriage loadings (Darwin Kafka push-port, RTT mode only)
+## Carriage loadings (Darwin, RTT mode only)
 
 RTT's Know Your Train gives coach count and facilities but no seating
-availability. The page-3 fill levels come from the National Rail
-Darwin push-port, which streams per-coach loadings (0–100) wherever
-the train operator feeds them in (e.g. Avanti, CrossCountry — but not
-every operator, and heritage railways not at all):
+availability. The page-3 fill levels come from National Rail Darwin,
+which publishes per-coach loadings (0–100) wherever the train
+operator feeds them in (e.g. Avanti, CrossCountry — but not every
+operator, and heritage railways not at all). One request per refresh,
+stdlib only:
 
-```bash
-pip install kafka-python
-```
+1. Register at `raildata.org.uk` (consumer access is enough) and
+   subscribe to a **Live Departure Board** product — departures-only
+   or arrivals+departures (free, approved immediately).
+2. Open the product → **Specification** tab → copy the **Consumer key**.
+3. Put `DARWIN_TOKEN=<consumer key>` in `.env` next to
+   `departures.py` (or set `$DARWIN_TOKEN` / create
+   `darwin_token.txt`).
+4. Run with `--source rtt` and check it with `python3 darwin.py SOT`
+   (never prints the key; shows per-coach loadings like `A:80`).
 
-```ini
-# .env (consumer group/username/password from the RDM
-# "Darwin Real Time Train Information" product page)
-DARWIN_KAFKA_GROUP=SC-...
-DARWIN_KAFKA_USER=...
-DARWIN_KAFKA_PASSWORD=...
-# usually fine as defaults:
-# DARWIN_KAFKA_BOOTSTRAP=pkc-....confluent.cloud:9092
-# DARWIN_KAFKA_TOPIC=prod-...-Push-Port-IIII2_0-JSON
-```
+The board matches each RTT departure to Darwin by scheduled time +
+operator + destination and fills the formation cars. Without a key,
+or where Darwin has no data, the diagram silently keeps its defaults.
 
-A background thread follows schedule, formation and loading messages,
-matches your RTT departures by headcode + date, and fills page 3.
-Learned schedules persist in untracked `darwin_kafka_state.json`, so a
-restart keeps working without waiting for the overnight timetable
-load. Without credentials (or the package) the diagram silently keeps
-its defaults. Never share these credentials (treat a posted password
-as burned and rotate it in RDM).
-
-Watch it learning live on the Pi (shows message counts and stored
-trains, never credentials):
-
-```bash
-python3 darwin_kafka.py --secs 60
-```
+Alternative: if your RDM subscription is the Darwin push-port (Kafka)
+product instead, set `DARWIN_KAFKA_GROUP/USER/PASSWORD` in `.env`
+(plus `pip install kafka-python`) and the board sips loadings from
+the firehose as a fallback — see `darwin_kafka.py`. Never share these
+credentials (treat a posted password as burned and rotate it in RDM).
 
 ## Pi setup
 
