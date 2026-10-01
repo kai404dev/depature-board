@@ -439,6 +439,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     idx_since = time.time()
     page_idx = 0
     page_since = time.time()
+    scroll_need = 0.0
     was_held = False
 
     control_path = os.path.join(THIS_DIR, "control.json")
@@ -610,6 +611,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         """Static if it fits within max_x, otherwise pause then loop-scroll
         left. Anything right of max_x on the text row is blanked, so draw
         whatever shares the row (clock, page number) AFTER calling this."""
+        nonlocal scroll_need
         key = (id(fnt), text)
         tw = scroll_w.get(key)
         if tw is None:
@@ -623,7 +625,9 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             return
         gap, pause, speed = 48, 2.5, 24.0   # px, seconds, px/second
         period = tw + gap
-        t = time.time() % (pause + period / speed)
+        cycle = pause + period / speed
+        scroll_need = max(scroll_need, cycle)
+        t = (time.time() - page_since) % cycle
         off = 0 if (t < pause or preview_frac is not None) \
             else int((t - pause) * speed)
         graphics.DrawText(offscreen, fnt, 1 - off, y_base, col, text)
