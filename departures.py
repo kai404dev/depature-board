@@ -640,9 +640,11 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 offscreen.SetPixel(xx, yy, 0, 0, 0)
 
 
-    def draw_calling(dep, spec, y_base):
-        """Calling-at line: static if it fits, otherwise pause, then
-        scroll left on a loop like a real board."""
+        def draw_calling(dep, spec, y_base):
+        """Calling-at line, scrolling when too long."""
+        if dep.get("calling_at"):
+            draw_scroll(F[spec["font"]], C[spec["color"]],
+                        dep["calling_at"], y_base, width - 2, spec["x"])
         text = dep.get("calling_at")
         if not text:
             return
@@ -900,31 +902,31 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     while True:
         now = time.time()
         paused = check_hot()
-        if now - last_fetch >= args.refresh or not board:
-          source = ctl_source or args.source
-          if source != last_source:
-              if last_source is not None:
-                  print(f"data source: {source}", file=sys.stderr, flush=True)
-              last_source = source
-              board, last_sig, last_fetch = [], None, 0
-          interval = (args.refresh if source == "htrs"
-                      else max(args.refresh, args.rtt_refresh))
-          if not board and source == "htrs":
-              interval = min(interval, 5)  # quick retry after a failed pull
-          if now - last_fetch >= interval:
-              try:
-                  fresh = get_board_data(source)
-              except Exception as e:  # keep old data, show error briefly
-                  print(f"Fetch failed ({source}): {e}", file=sys.stderr)
-                  fresh = None
-              if fresh is not None:
-                  sig = board_signature(fresh)
-                  if sig != last_sig:
-                      board = fresh
-                      last_sig = sig
-                      idx = 0
-                      idx_since = now
-              last_fetch = now
+
+        source = ctl_source or args.source
+        if source != last_source:
+            if last_source is not None:
+                print(f"data source: {source}", file=sys.stderr, flush=True)
+            last_source = source
+            board, last_sig, last_fetch = [], None, 0
+        interval = (args.refresh if source == "htrs"
+                    else max(args.refresh, args.rtt_refresh))
+        if not board and source == "htrs":
+            interval = min(interval, 5)  # quick retry after a failed pull
+        if now - last_fetch >= interval:
+            try:
+                fresh = get_board_data(source)
+            except Exception as e:  # keep old data, show error briefly
+                print(f"Fetch failed ({source}): {e}", file=sys.stderr)
+                fresh = None
+            if fresh is not None:
+                sig = board_signature(fresh)
+                if sig != last_sig:
+                    board = fresh
+                    last_sig = sig
+                    idx = 0
+                    idx_since = now
+            last_fetch = now
 
         held = paused in (1, 2, 3) and not getattr(
             args, "ignore_control", False)
@@ -937,7 +939,8 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 # fresh dwell on unpause
                 was_held = False
                 page_since = now
-            if len(args.pages) > 1 and now - page_since >= max(args.page_seconds, scroll_need):
+            if len(args.pages) > 1 and now - page_since >= max(
+                    args.page_seconds, scroll_need):
                 page_idx = (page_idx + 1) % len(args.pages)
                 page_since = now
             cur_page = args.pages[page_idx % len(args.pages)]
@@ -950,8 +953,9 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             frac = 1.0
         else:
             frac = max(0.0, min(1.0, (now - page_since)
-                                / max(0.1, args.page_seconds)))
+                                / max(0.1, args.page_seconds, scroll_need)))
 
+        scroll_need = 0.0
         offscreen.Fill(0, 0, 0)
 
         if not board:
