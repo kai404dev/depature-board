@@ -646,7 +646,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             graphics.DrawText(offscreen, fnt, resolve_x(xspec, tw, width),
                               y_base, col, text)
             return
-        gap, pause, speed = 48, 2.5, 24.0   # px, seconds, px/second
+        gap, pause, speed = 48, 2.5, 20.0   # px, seconds, px/second
         period = tw + gap
         cycle = pause + period / speed
         scroll_need = max(scroll_need, cycle)
@@ -1146,15 +1146,16 @@ def main():
                    help="You have 3 panels chained, so default is 3")
     p.add_argument("--led-parallel", type=int, default=1)
     p.add_argument("--led-gpio-mapping", default="regular")
-    p.add_argument("--led-brightness", type=int, default=100)
+    p.add_argument("--led-brightness", type=int, default=70)
     p.add_argument("--led-pwm-bits", type=int, default=11)
     p.add_argument("--led-limit-refresh", type=int, default=0)
-    p.add_argument("--led-slowdown-gpio", type=int, default=1)
+    p.add_argument("--led-slowdown-gpio", type=int, default=2)
     p.add_argument("--led-rgb-sequence", default="RGB")
     p.add_argument("--led-pixel-mapper", default="")
     p.add_argument("--led-show-refresh", action="store_true")
-    p.add_argument("--led-no-drop-privs", action="store_true")
+    p.add_argument("--led-no-drop-privs", action="store_true", default=True)
     p.add_argument("--led-no-hardware-pulse", action="store_true",
+                   default=True,
                    help="Don't use hardware pin-pulse generation. "
                         "Avoids the snd_bcm2835 sound-module conflict, "
                         "but with more flicker.")
