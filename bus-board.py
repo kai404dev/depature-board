@@ -128,17 +128,19 @@ def load_services(args):
     return services[:args.limit]
 
 
-def via_text(svc):
+def via_text(svc, prefix=True):
     via = (svc.get("via") or "").strip()
-    return f"via {via}" if via else ""
+    if not via:
+        return ""
+    return f"via {via}" if prefix else via
 
 
-def format_console(services):
+def format_console(services, show_via=True):
     out = []
     for svc in services:
         route = (svc.get("route") or "").strip()
         dest = (svc.get("destination") or "").strip().upper()
-        via = via_text(svc)
+        via = via_text(svc, prefix=show_via)
         out.append(f"[{route}] {dest}")
         if via:
             out.append(f"  {via}")
@@ -354,7 +356,7 @@ def run_board(args, services):
         dest = (svc.get("destination") or "").strip()
         if args.dest_upper:
             dest = dest.upper()
-        via = via_text(svc)
+        via = via_text(svc, prefix=args.via)
 
         # route width claims the left of the panel; dest/via share the
         # cell to its right. Scrolling rows are painted first, the
@@ -431,6 +433,11 @@ def main():
                    default=True,
                    help="Uppercase the destination like real blinds "
                         "(--no-dest-upper to keep as typed)")
+    p.add_argument("--via", "--no-via",
+                   action=argparse.BooleanOptionalAction, default=True,
+                   help='Prefix the via line with "via " (--no-via shows '
+                        'just the places, e.g. "Dronfield" instead of '
+                        '"via Dronfield")')
     p.add_argument("--dest-grow", action=argparse.BooleanOptionalAction,
                    default=True,
                    help="With no via, grow the destination (up to 3x) to "
@@ -476,7 +483,7 @@ def main():
     services = load_services(args)
 
     if args.mock:
-        print(format_console(services))
+        print(format_console(services, show_via=args.via))
         if not args.once:
             print("(bus-board mock: static list, nothing to poll. "
                   "Re-run to update.)", file=sys.stderr)
