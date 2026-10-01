@@ -9,10 +9,11 @@ Replicates the amber destination display on the front of a UK bus:
   |      via Dronfield, Chesterfield               |
   +------------------------------------------------+
 
-Route number big on the left, destination big next to it, via points
-smaller along the bottom (scrolls when too long). All amber, like the
-real blinds. Give one service to hold it, or several to rotate like a
-bus cycling through displays.
+Route number huge on the left, filling the panel bottom-to-top
+(pixel-doubled font), destination and via stacked in the remaining
+space to its right, both centred and much bigger than before. All
+amber, like the real blinds. Give one service to hold it, or several
+to rotate like a bus cycling through displays.
 
   python3 bus-board.py --mock --once \
     --service "43|Sheffield|Dronfield, Chesterfield"
@@ -43,10 +44,12 @@ sys.path.insert(0, THIS_DIR)
 
 from api import find_font  # reuse font search path (fonts/ next to script)
 
+import tempfile
+
 FONTS = {
-    "route": "10x20.bdf",  # route number, big left
-    "dest": "7x14B.bdf",   # destination, big next to route
-    "via": "5x7.bdf",      # via points along the bottom
+    "route": "10x20.bdf",  # pixel-doubled at load -> fills panel height
+    "dest": "9x18B.bdf",   # destination, top half of remaining space
+    "via": "7x14B.bdf",    # via points, bottom half of remaining space
 }
 AMBER = (255, 140, 0)  # bus blinds are monochrome amber
 COLORS = {
@@ -168,13 +171,85 @@ def scroll_timeline(tw, max_x, x0, t):
     return span, cycle
 
 
-def load_fonts(graphics):
+def load_fonts(graphics, route_scale=2):
     F = {}
     for role, name in FONTS.items():
+        path = find_font(name)
+        if role == "route" and route_scale != 1:
+            path = scale_bdf(path, route_scale)
         f = graphics.Font()
-        f.LoadFont(find_font(name))
+        f.LoadFont(path)
         F[role] = f
     return F
+
+
+def scale_bdf(src, scale):
+    """Pixel-double (or triple) a BDF font, return the scaled file path.
+
+    Each source pixel becomes scale x scale pixels: BBX/DWIDTH extents
+    and every bitmap row are expanded, so e.g. 10x20 @2x renders ~40px
+    tall and the route number fills the panel bottom-to-top. The
+    scaled file lives in the OS temp dir (regenerated every run).
+    """
+    if scale < 2:
+        return src
+    with open(src, errors="replace") as f:
+        lines = f.read().splitlines()
+    out = []
+    in_bitmap = False
+    bbx_w = 0
+    for line in lines:
+        p = line.split()
+        if not p:
+            out.append(line)
+            continue
+        if p[0] == "FONTBOUNDINGBOX" and len(p) >= 5:
+            w, h, xo, yo = (int(x) for x in p[1:5])
+            out.append(f"FONTBOUNDINGBOX {w * scale} {h * scale} "
+                       f"{xo * scale} {yo * scale}")
+        elif p[0] == "BBX" and len(p) >= 5:
+            bbx_w, h, xo, yo = (int(x) for x in p[1:5])
+            bbx_w *= scale
+            out.append(f"BBX {bbx_w} {h * scale} {xo * scale} {yo * scale}")
+        elif p[0] == "DWIDTH" and len(p) >= 3:
+            out.append(f"DWIDTH {int(p[1]) * scale} {p[2]}")
+        elif p[0] == "BITMAP":
+            in_bitmap = True
+            out.append(line)
+        elif p[0] == "ENDCHAR":
+            in_bitmap = False
+            bbx_w = 0
+            out.append(line)
+        elif in_bitmap and bbx_w:
+            row = line.strip()
+            nbytes = (bbx_w // scale + 7) // 8
+            bits = "".join(f"{int(row[i:i + 2] or '00', 16):08b}"
+                            for i in range(0, nbytes * 2, 2))
+            bits = bits[:bbx_w // scale]
+            big = "".join(b * scale for b in bits)
+            big += "0" * ((-len(big)) % 8)
+            out.append("".join(f"{int(big[i:i + 8], 2):02X}"
+                               for i in range(0, len(big), 8)))
+        else:
+            out.append(line)
+    # repeat each bitmap row vertically: second pass over the rows
+    final = []
+    in_bitmap = False
+    for line in out:
+        final.append(line)
+        if line == "BITMAP":
+            in_bitmap = True
+        elif line == "ENDCHAR":
+            in_bitmap = False
+        elif in_bitmap:
+            for _ in range(scale - 1):
+                final.append(line)
+    fd, dst = None, os.path.join(
+        tempfile.gettempdir(),
+        f"busroute-{os.path.basename(src)}-{scale}x.bdf")
+    with open(dst, "w") as f:
+        f.write("\n".join(final) + "\n")
+    return dst
 
 
 def text_width(graphics, canvas, font, color, text):
@@ -200,7 +275,7 @@ def run_board(args, services):
     if args.led_no_hardware_pulse:
         options.disable_hardware_pulsing = True
 
-    F = load_fonts(graphics)
+    F = load_fonts(graphics, route_scale=args.route_scale)
     matrix = RGBMatrix(options=options)
     C = {name: graphics.Color(*rgb) for name, rgb in COLORS.items()}
 
@@ -209,13 +284,20 @@ def run_board(args, services):
     print(f"bus board {W}x{H} services={len(services)}",
           file=sys.stderr, flush=True)
 
+    # Vertical geometry: route fills bottom-to-top, dest sits in the
+    # top half, via in the bottom half (overridable for other heights).
+    route_y = args.main_y if args.main_y is not None else H - 1
+    dest_y = args.dest_y if args.dest_y is not None else H // 2 - 1
+    via_y = args.via_y if args.via_y is not None else H - 4
+
     scroll_w = {}
     page_since = time.time()
     idx = 0
     idx_since = time.time()
     scroll_need = 0.0
 
-    def draw_scroll(fnt, col, text, y_base, max_x, xspec="left", x0=1):
+    def draw_scroll(fnt, col, text, y_base, max_x, xspec="left", x0=1,
+                      x1=None):
         nonlocal scroll_need
         key = (id(fnt), text)
         tw = scroll_w.get(key)
@@ -225,7 +307,13 @@ def run_board(args, services):
             tw = scroll_w[key] = text_width(
                 graphics, offscreen, fnt, col, text)
         if tw <= max_x - x0:
-            x = x0 if x0 > 1 else resolve_x(xspec, tw, W)
+            if x1 is not None and xspec == "center":
+                # centre inside the cell [x0..x1], not the whole panel
+                x = x0 + max(0, (x1 - x0 + 1 - tw) // 2)
+            elif x0 > 1:
+                x = x0
+            else:
+                x = resolve_x(xspec, tw, W)
             graphics.DrawText(offscreen, fnt, x, y_base, col, text)
             return
         _, cycle = scroll_timeline(tw, max_x, x0, 0.0)
@@ -241,33 +329,32 @@ def run_board(args, services):
                 offscreen.SetPixel(xx, yy, 0, 0, 0)
 
     def draw_blind(svc):
-        """One front-blind: big route left, big destination next to it,
-        via points smaller along the bottom. Route stays put; dest and
-        via scroll inside their cells when too long."""
+        """One front-blind: huge route number left filling bottom to
+        top, destination and via stacked and centred in the space to
+        its right. Route stays put; dest and via scroll inside their
+        cells when too long."""
         route = (svc.get("route") or "").strip()
         dest = (svc.get("destination") or "").strip()
         if args.dest_upper:
             dest = dest.upper()
         via = via_text(svc)
 
-        # main row: route fixed left, destination flows after it.
-        # Destination first: its scroll edge-blanking clears the row
-        # outside its cell, then the route is painted fresh on top so
-        # a long scrolling destination can never chew into it.
+        # route width claims the left of the panel; dest/via share the
+        # cell to its right. Scrolling rows are painted first, the
+        # route last, so scroll edge-blanking can never chew into it.
         w_route = 0
         if route:
             w_route = text_width(graphics, offscreen, F["route"],
                                  C["route"], route)
-        dest_x0 = 1 if not route else 1 + w_route + args.gap
-        draw_scroll(F["dest"], C["dest"], dest, args.dest_y,
-                    W - 1, x0=dest_x0)
-        if route:
-            graphics.DrawText(offscreen, F["route"], 1, args.main_y,
-                              C["route"], route)
-
-        # via row along the bottom, full width
+        cell_x0 = 1 if not route else 1 + w_route + args.gap
         if via:
-            draw_scroll(F["via"], C["via"], via, args.via_y, W - 1)
+            draw_scroll(F["via"], C["via"], via, via_y, W - 1,
+                        xspec="center", x0=cell_x0, x1=W - 1)
+        draw_scroll(F["dest"], C["dest"], dest, dest_y, W - 1,
+                    xspec="center", x0=cell_x0, x1=W - 1)
+        if route:
+            graphics.DrawText(offscreen, F["route"], 1, route_y,
+                              C["route"], route)
 
     while True:
         now = time.time()
@@ -308,14 +395,20 @@ def main():
                    default=True,
                    help="Uppercase the destination like real blinds "
                         "(--no-dest-upper to keep as typed)")
-    p.add_argument("--main-y", type=int, default=20,
-                   help="Baseline of the route/destination row")
-    p.add_argument("--dest-y", type=int, default=20,
-                   help="Baseline of the destination (tweak to align "
-                        "with the route font)")
-    p.add_argument("--via-y", type=int, default=36,
-                   help="Baseline of the via row")
-    p.add_argument("--gap", type=int, default=8,
+    p.add_argument("--route-scale", type=int, default=2,
+                   help="Pixel-scaling of the route number font "
+                        "(2 = double size, fills the 40px panel top to "
+                        "bottom; 1 = unscaled)")
+    p.add_argument("--main-y", type=int, default=None,
+                   help="Baseline of the route number "
+                        "(default: panel bottom, filling top to bottom)")
+    p.add_argument("--dest-y", type=int, default=None,
+                   help="Baseline of the destination "
+                        "(default: centred in the top half)")
+    p.add_argument("--via-y", type=int, default=None,
+                   help="Baseline of the via row "
+                        "(default: centred in the bottom half)")
+    p.add_argument("--gap", type=int, default=6,
                    help="Pixels between route number and destination")
     p.add_argument("--mock", action="store_true",
                    help="Print to console instead of driving the matrix")
