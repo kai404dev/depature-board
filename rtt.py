@@ -9,11 +9,12 @@ so departures.py can render either source unchanged.
              access token via /api/get_access_token; a long-life access
              token is used as-is (auto-detected).
   Quota      30/min, 750/hr, 9000/day, 30000/week. Calling-at + formation
-             come from /gb-nr/service, which is cached per service so the
-             board costs roughly one location call per refresh.
+             come from /gb-nr/service for the lead departure only, cached
+             for SERVICE_TTL seconds, so the board costs about one
+             location call per refresh plus one service call per 90 s.
 
 Token lookup (read once at startup, before the LED library drops root):
-  1. $RTT_TOKEN
+  1. $RTT_TOKEN (or RTT_API_KEY) in the environment, then .env next to this script
   2. rtt_token.txt next to this script (chmod 600, keep out of git)
 
 Pure standard library. No hardware needed.
@@ -41,7 +42,20 @@ TOKEN_FILE = os.path.join(THIS_DIR, "rtt_token.txt")
 # Flip if the coach diagram on page 3 comes out back to front.
 REVERSE_FORMATION = False
 
-SERVICE_TTL = 600   # seconds a /gb-nr/service result is reused
+# Rail replacement buses: headcode 0B00 (and any bus-mode service).
+HIDE_HEADCODES = {"0B00"}
+HIDE_MODES = {"BUS", "SCHEDULED_BUS", "REPLACEMENT_BUS"}
+
+STATUS_TEXT = {
+    "APPROACHING": "Train approaching",
+    "ARRIVING": "Train arriving",
+    "AT_PLATFORM": "Train at platform",
+    "DEPART_PREPARING": "Preparing to depart",
+    "DEPART_READY": "Ready to depart",
+    "DEPARTING": "Departing now",
+}
+
+SERVICE_TTL = 90    # seconds a /gb-nr/service result is reused
 FAIL_TTL = 120      # seconds before retrying a failed service lookup
 
 _S = {
@@ -55,13 +69,44 @@ _S = {
 }
 
 
+TOKEN_KEYS = ("RTT_TOKEN", "RTT_API_KEY")
+
+
+def _read_dotenv(path):
+    """Tiny .env parser: KEY=value, optional 'export ', quotes, # comments."""
+    out = {}
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                if line.startswith("export "):
+                    line = line[7:].lstrip()
+                k, v = line.split("=", 1)
+                v = v.strip()
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+                    v = v[1:-1]
+                out[k.strip()] = v
+    except OSError:
+        pass
+    return out
+
+
 def load_token():
-    """Token from $RTT_TOKEN or rtt_token.txt ('' if neither)."""
-    t = os.environ.get("RTT_TOKEN", "").strip()
-    if not t and os.path.exists(TOKEN_FILE):
+    """Token from the environment, then .env next to this script, then
+    rtt_token.txt ('' if none). .env keys: RTT_TOKEN or RTT_API_KEY."""
+    for k in TOKEN_KEYS:
+        if os.environ.get(k, "").strip():
+            return os.environ[k].strip()
+    env = _read_dotenv(os.path.join(THIS_DIR, ".env"))
+    for k in TOKEN_KEYS:
+        if env.get(k, "").strip():
+            return env[k].strip()
+    if os.path.exists(TOKEN_FILE):
         with open(TOKEN_FILE) as f:
-            t = f.read().strip()
-    return t
+            return f.read().strip()
+    return ""
 
 
 def set_token(token):
@@ -175,6 +220,9 @@ def _to_departure(svc, now):
     lmeta = svc.get("locationMetadata") or {}
     if not dep or meta.get("inPassengerService") is False:
         return None
+    if (meta.get("trainReportingIdentity") in HIDE_HEADCODES
+            or meta.get("modeType") in HIDE_MODES):
+        return None
     display = tdat.get("displayAs")
     if display not in ("CALL", "STARTS", "CANCELLED", "DIVERTED"):
         return None  # passes, terminates here, or null (= pass)
@@ -214,11 +262,6 @@ def _to_departure(svc, now):
             cancel_reason = txt
         elif r.get("type") == "DELAY" and not delay_reason:
             delay_reason = txt
-    notes = []
-    if cancelled and cancel_reason:
-        notes.append(cancel_reason)
-    if delayed and delay_reason:
-        notes.append(delay_reason)
 
     pm = lmeta.get("platform") or {}
     platform = str(pm.get("actual") or pm.get("forecast")
@@ -245,12 +288,16 @@ def _to_departure(svc, now):
         "cancellation_reason": cancel_reason,
         "delay_reason": delay_reason,
         "calling_at": "",
-        "note_lines": notes,
+        "operator": (meta.get("operator") or {}).get("name", ""),
+        "note_lines": [],
+        "_loc_status": tdat.get("status"),
+        "_plat_planned": pm.get("planned"),
         "_alloc_index": lmeta.get("allocationIndex"),
     }
     nv = lmeta.get("numberOfVehicles")
     if isinstance(nv, int) and nv > 0:
         d["formation"] = _plain_formation(nv)
+    d["note_lines"] = _notes(d)
     sort_key = (fc or sched).timestamp() if (fc or sched) else 0.0
     return sort_key, d
 
@@ -277,6 +324,55 @@ def _cars_from_alloc(a):
     return cars
 
 
+def _notes(d):
+    """Page-2 info lines (cycled on the display), most urgent first."""
+    n = []
+    if d.get("is_cancelled"):
+        n.append(d.get("cancellation_reason") or "This service is cancelled")
+    else:
+        if d.get("is_delayed"):
+            line = f"Running {d['delay_minutes']} min late"
+            if d.get("delay_reason"):
+                line += f": {d['delay_reason']}"
+            n.append(line)
+        st = STATUS_TEXT.get(d.get("_loc_status"))
+        if st:
+            n.append(st)
+        pp, pl = d.get("_plat_planned"), d.get("platform")
+        if pp and pl and str(pp) != str(pl):
+            n.append(f"Platform changed from {pp} to {pl}")
+    cars = (d.get("formation") or {}).get("cars") or []
+    if cars:
+        line = f"{len(cars)} coach" + ("" if len(cars) == 1 else "es")
+        firsts = ["ABCDEFGH"[i] if i < 8 else str(i + 1)
+                  for i, c in enumerate(cars) if c.get("first")]
+        if firsts:
+            line += (", first class in coach " if len(firsts) == 1
+                     else ", first class in coaches ") + ", ".join(firsts)
+        n.append(line)
+    if d.get("operator"):
+        n.append(f"Operated by {d['operator']}")
+    return n
+
+
+def _stop_label(l):
+    """'Name (10:42)' or 'Name (10:42 exp 10:45)' for one calling point."""
+    name = (l.get("location") or {}).get("description")
+    if not name:
+        return None
+    td = l.get("temporalData") or {}
+    for key in ("arrival", "departure"):
+        t = td.get(key) or {}
+        sched = _hhmm(t.get("scheduleAdvertised") or t.get("scheduleInternal"))
+        if sched:
+            exp = _hhmm(t.get("realtimeActual") or t.get("realtimeForecast")
+                        or t.get("realtimeEstimate"))
+            if exp and exp != sched:
+                return f"{name} ({sched} exp {exp})"
+            return f"{name} ({sched})"
+    return name
+
+
 def _apply_service(d, svc, station):
     locs = svc.get("locations") or []
     idx = None
@@ -287,17 +383,24 @@ def _apply_service(d, svc, station):
             idx = i
             break
 
+    stops = []
     if idx is not None:
-        stops = []
         for l in locs[idx + 1:]:
             td = l.get("temporalData") or {}
             if td.get("displayAs") not in ("CALL", "TERMINATES"):
                 continue
-            name = (l.get("location") or {}).get("description")
-            if name and name not in stops:
-                stops.append(name)
-        if stops:
-            d["calling_at"] = "Calling at " + ", ".join(stops)
+            label = _stop_label(l)
+            if label and label not in stops:
+                stops.append(label)
+    op = ((svc.get("scheduleMetadata") or {}).get("operator") or {}).get(
+        "name") or d.get("operator")
+    if op:
+        d["operator"] = op
+    text = ("Calling at: " + ", ".join(stops) + ".") if stops else ""
+    if op:
+        text = (text + " " if text else "") + (
+            f"This service is operated by {op}.")
+    d["calling_at"] = text
 
     alloc = svc.get("allocationData") or []
     if alloc:
@@ -310,6 +413,7 @@ def _apply_service(d, svc, station):
         cars = _cars_from_alloc(a)
         if cars:
             d["formation"] = {"cars": cars}
+    d["note_lines"] = _notes(d)
 
 
 # ---------------------------------------------------------------------------
@@ -341,10 +445,12 @@ def fetch_departures(station, limit=3, window=120):
 
 
 def enrich(deps, station):
-    """Attach calling_at + formation from /gb-nr/service (cached)."""
+    """Attach calling_at + formation from /gb-nr/service (cached).
+    Only the lead departure is enriched: pages 1-3 only use its calling
+    points and formation, and it keeps the quota low."""
     cache = _S["svc_cache"]
     now = time.time()
-    for d in deps:
+    for d in deps[:1]:
         ident, date = d.get("rtt_identity"), d.get("operating_date")
         if not ident or not date:
             continue
