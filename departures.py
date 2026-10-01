@@ -689,15 +689,12 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             cap = min(width - 2, width - page_w - 4)
             if share3:
                 cap = min(cap, clock_x - 3)
-            graphics.DrawText(offscreen, nfont, 1, y3, ncol,
-                              fit_text(graphics, offscreen, nfont, ncol,
-                                      draw_scroll(nfont, ncol, notes[0], y3, max(0, cap)
-                                                 ))
+            draw_scroll(nfont, ncol, notes[0], y3, max(0, cap))
         graphics.DrawText(offscreen, clock_fnt, clock_x,
                           resolve_y(L["clock"]["y"], height),
                           C[L["clock"]["color"]], clock_s)
         draw_page_chrome(page, frac)
-
+      
     def draw_page3(dep, page, frac):
         """Train formation diagram: fixed-width coach cards, pointy front
         car, 1ST/wheelchair markers inside, letters underneath."""
