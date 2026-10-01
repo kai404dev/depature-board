@@ -1326,13 +1326,13 @@ def _apply_service(d, svc, station):
 
     d["note_lines"] = _notes(d)
 
+    formation_cars = (d.get("formation") or {}).get("cars") or []
+
     _debug(
         f"ENRICH {d.get('rtt_identity')}/"
         f"{d.get('headcode')}: "
         f"calling_points={len(stops)} "
-        f"formation={len("
-        f"(d.get('formation') or {}).get('cars') or []"
-        f")} "
+        f"formation={len(formation_cars)} "
         f"operator={op}"
     )
 
