@@ -640,7 +640,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 offscreen.SetPixel(xx, yy, 0, 0, 0)
 
 
-        def draw_calling(dep, spec, y_base):
+    def draw_calling(dep, spec, y_base):
           """Calling-at line, scrolling when too long."""
           if dep.get("calling_at"):
               draw_scroll(F[spec["font"]], C[spec["color"]],
