@@ -45,10 +45,12 @@ DEFAULT_BASE_URL = ("https://api1.raildata.org.uk"
                     "/1010-live-departure-board-dep1_2"
                     "/LDBWS/api/20220120")
 
-# All known Live Departure Board product paths. The first reachable one
-# wins (cached for the session), so any subscribed LDBWS product works
-# with no configuration -- including the arrivals+departures board.
+# All known Live Departure Board product paths. The staff product is
+# tried first: it is the one documented to carry formation data.
 BASE_CANDIDATES = (
+    "https://api1.raildata.org.uk"
+    "/1010-live-arrival-and-departure-boards---staff-version1_0"
+    "/LDBSVWS/api/20220120",
     "https://api1.raildata.org.uk"
     "/1010-live-departure-board-dep1_2"
     "/LDBWS/api/20220120",
@@ -222,6 +224,10 @@ class _NotFound(RuntimeError):
     """A 404 from the API: wrong product path or operation, try the next."""
 
 
+class _AuthError(RuntimeError):
+    """A 401/403 from the API: key rejected on this path, try the next."""
+
+
 def _candidate_bases():
     """Explicit DARWIN_BASE_URL first, then every known product path."""
     out = []
@@ -261,11 +267,14 @@ def _get_raw(base, path, params=None, timeout=12):
             _debug(f"{path} -> HTTP 404 on {base}")
             raise _NotFound(f"Darwin REST 404 on {base}/{path}")
         hint = ""
-        if e.code == 401:
+        if e.code in (401, 403):
             hint = (" (check the RDM consumer key, and that "
                     "DARWIN_BASE_URL matches your product's Try-it URL)")
+            _debug(f"{path} -> HTTP {e.code} on {base}")
+            raise _AuthError(
+                f"Darwin REST {e.code} {e.reason}: {detail}{hint}")
         raise RuntimeError(
-            f"Darwin REST {e.code} {e.reason}: {detail}{hint}")
+            f"Darwin REST {e.code} {e.reason}: {detail}")
     try:
         data = json.loads(body.decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as e:
@@ -340,12 +349,40 @@ def _parse_service(svc):
     }
 
 
+def _path_params(base, op, crs, rows, window):
+    """(path, params) for one board candidate.
+
+    The staff board takes the board time as a path parameter
+    (YYYYMMDDTHHMMSS, local time); the public boards take
+    numRows/timeWindow as query parameters.
+    """
+    path_crs = urllib.parse.quote(crs, safe="")
+    if "staff-version" in base and op == "GetArrDepBoardWithDetails":
+        stamp = time.strftime("%Y%m%dT%H%M%S")
+        return f"GetArrDepBoardWithDetails/{path_crs}/{stamp}", None
+    return (f"{op}/{path_crs}",
+            {"numRows": int(rows), "timeWindow": int(window)})
+
+
+def _board_candidates(crs, rows, window):
+    """(base, op) combos to try, staff product first."""
+    out = []
+    for base in _candidate_bases():
+        if "staff-version" in base:
+            out.append((base, "GetArrDepBoardWithDetails"))
+        else:
+            for op in OP_CANDIDATES:
+                out.append((base, op))
+    return out
+
+
 def get_board(crs, rows=10, window=120):
     """Darwin departures for a CRS code. Cached BOARD_TTL seconds.
 
     The working (base, operation) is negotiated once across every
-    known LDBWS product path, so departures-only and
-    arrivals+departures products both work unconfigured.
+    known LDBWS product, so departures-only, arrivals+departures and
+    staff products all work unconfigured. A dead negotiation is
+    remembered briefly so a bad key doesn't spray requests.
     """
     crs = (crs or "").strip().upper()
     if not crs:
@@ -355,24 +392,26 @@ def get_board(crs, rows=10, window=120):
     if hit and now - hit[0] < BOARD_TTL and hit[1] is not None:
         _debug(f"BOARD CACHE HIT {crs}")
         return hit[1]
-    params = {"numRows": int(rows), "timeWindow": int(window)}
-    path_crs = urllib.parse.quote(crs, safe="")
-    last = None
     if _D["endpoint"]:
-        bases_ops = [_D["endpoint"]]
+        combos = [_D["endpoint"]]
+    elif (now - _D.get("neg_fail_at", 0.0) < 600
+            and _D.get("neg_fail_err")):
+        raise RuntimeError(_D["neg_fail_err"])
     else:
-        bases_ops = [(b, op) for b in _candidate_bases()
-                     for op in OP_CANDIDATES]
-    for base, op in bases_ops:
+        combos = _board_candidates(crs, rows, window)
+    last = None
+    for base, op in combos:
+        path, params = _path_params(base, op, crs, rows, window)
         try:
-            data = _get_raw(base, f"{op}/{path_crs}", params)
-        except _NotFound as e:
+            data = _get_raw(base, path, params)
+        except (_NotFound, _AuthError) as e:
             last = e
             continue
-        if _D["endpoint"] != (base, op):
-            _D["endpoint"] = (base, op)
-            _debug(f"ENDPOINT {op} on {base}")
-            print(f"Darwin endpoint: {op} on {base}", file=sys.stderr)
+        _D["endpoint"] = (base, op)
+        _D.pop("neg_fail_at", None)
+        _D.pop("neg_fail_err", None)
+        _debug(f"ENDPOINT {op} on {base}")
+        print(f"Darwin endpoint: {op} on {base}", file=sys.stderr)
         services = [_parse_service(s) for s in
                     data.get("trainServices") or []]
         _debug(f"BOARD {crs}: {len(services)} services")
@@ -382,7 +421,11 @@ def get_board(crs, rows=10, window=120):
                          key=lambda k: _D["board_cache"][k][0])
             del _D["board_cache"][oldest]
         return services
-    raise last or RuntimeError("no reachable Darwin board endpoint")
+    err = (f"no reachable Darwin board endpoint "
+           f"({len(combos)} tried): {last}")
+    _D["neg_fail_at"] = now
+    _D["neg_fail_err"] = err
+    raise RuntimeError(err)
 
 
 def get_details_formation(service_id):

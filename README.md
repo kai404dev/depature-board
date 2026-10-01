@@ -49,8 +49,10 @@ operator, and heritage railways not at all). One request per refresh,
 stdlib only:
 
 1. Register at `raildata.org.uk` (consumer access is enough) and
-   subscribe to a **Live Departure Board** product — departures-only
-   or arrivals+departures (free, approved immediately).
+   subscribe to a Live Departure Board product — the staff
+   arrivals+departures product is the one documented to carry
+   formation data; departures-only products work too (free, approved
+   immediately). The board negotiates the right endpoint by itself.
 2. Open the product → **Specification** tab → copy the **Consumer key**.
 3. Put `DARWIN_TOKEN=<consumer key>` in `.env` next to
    `departures.py` (or set `$DARWIN_TOKEN` / create
