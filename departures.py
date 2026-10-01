@@ -860,13 +860,18 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                                edge.blue)
             offscreen.SetPixel(width - 2, yy, edge.red, edge.green,
                                edge.blue)
+        # two solid warning bars above the headline, full width inside
+        # the border
+        for yy in (3, 5):
+            for xx in range(2, width - 2):
+                offscreen.SetPixel(xx, yy, edge.red, edge.green, edge.blue)
         warn = C["alert"]
         body = C["text"]
         top_fnt = F["top"]
         small_fnt = F["small"]
-        lines = [("FAST TRAIN PASSING", top_fnt, warn, 12),
-                 ("PLEASE STAND WELL BACK", small_fnt, body, 24),
-                 ("FROM THE PLATFORM EDGE", small_fnt, body, 33)]
+        lines = [("FAST TRAIN APPROACHING", top_fnt, warn, 18),
+                 ("PLEASE STAND WELL BACK", small_fnt, body, 27),
+                 ("FROM THE PLATFORM EDGE", small_fnt, body, 35)]
         for text, fnt, col, y_base in lines:
             if y_base < 2 or y_base >= height - 1:
                 continue
