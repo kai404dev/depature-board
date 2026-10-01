@@ -445,6 +445,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     layout_mt = layout_mtimes(layout_dir)
     control_mt = -1
     paused_page = None
+    ctl_source = None   
     last_hot_check = 0.0
     last_hot_err = None
 
