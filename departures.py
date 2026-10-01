@@ -937,7 +937,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 # fresh dwell on unpause
                 was_held = False
                 page_since = now
-            if len(args.pages) > 1 and now - page_since >= args.page_seconds:
+            if len(args.pages) > 1 and now - page_since >= max(args.page_seconds, scroll_need):
                 page_idx = (page_idx + 1) % len(args.pages)
                 page_since = now
             cur_page = args.pages[page_idx % len(args.pages)]
