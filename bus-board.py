@@ -180,6 +180,12 @@ def load_fonts(graphics, route_scale=2):
         f = graphics.Font()
         f.LoadFont(path)
         F[role] = f
+    # doubled/tripled destination for the no-via case (grown to fill)
+    base = find_font(FONTS["dest"])
+    for s in (2, 3):
+        f = graphics.Font()
+        f.LoadFont(scale_bdf(base, s))
+        F[f"dest{s}"] = f
     return F
 
 
@@ -330,11 +336,20 @@ def run_board(args, services):
             for xx in range(max(0, max_x + 1), W):
                 offscreen.SetPixel(xx, yy, 0, 0, 0)
 
+    def dest_baseline(scale):
+        """Baseline that vertically centres the caps band.
+
+        Caps light bitmap rows 3..15 of 20, scaled: the band centre
+        sits (13*s+1)/2 above the baseline, so offset from mid-panel.
+        """
+        return int((H - 1) / 2 + (13 * scale + 1) / 2)
+
     def draw_blind(svc):
-        """One front-blind: huge route number left filling bottom to
-        top, destination and via stacked and centred in the space to
-        its right. Route stays put; dest and via scroll inside their
-        cells when too long."""
+        """One front-blind: huge route number left, vertically
+        centred; destination and via stacked and centred in the space
+        to its right. With no via, the destination grows (up to 3x)
+        to fill the cell and centres vertically instead. Route stays
+        put; dest and via scroll inside their cells when too long."""
         route = (svc.get("route") or "").strip()
         dest = (svc.get("destination") or "").strip()
         if args.dest_upper:
@@ -352,8 +367,27 @@ def run_board(args, services):
         if via:
             draw_scroll(F["via"], C["via"], via, via_y, W - 1,
                         xspec="center", x0=cell_x0, x1=W - 1)
-        draw_scroll(F["dest"], C["dest"], dest, dest_y, W - 1,
-                    xspec="center", x0=cell_x0, x1=W - 1)
+            draw_scroll(F["dest"], C["dest"], dest, dest_y, W - 1,
+                        xspec="center", x0=cell_x0, x1=W - 1)
+        else:
+            # no via: grow the destination to fill the cell (largest
+            # doubling that fits without scrolling), centred
+            # vertically; falls back to scrolling 1x when even that
+            # is too wide.
+            grown = None
+            if args.dest_grow:
+                for s in (3, 2):
+                    fnt = F[f"dest{s}"]
+                    tw = text_width(graphics, offscreen, fnt,
+                                    C["dest"], dest)
+                    if tw <= W - 1 - cell_x0:
+                        grown = (fnt, dest_baseline(s))
+                        break
+            if grown is None:
+                grown = (F["dest"], dest_baseline(1))
+            fnt, y = grown
+            draw_scroll(fnt, C["dest"], dest, y, W - 1,
+                        xspec="center", x0=cell_x0, x1=W - 1)
         if route:
             graphics.DrawText(offscreen, F["route"], 1, route_y,
                               C["route"], route)
@@ -397,6 +431,11 @@ def main():
                    default=True,
                    help="Uppercase the destination like real blinds "
                         "(--no-dest-upper to keep as typed)")
+    p.add_argument("--dest-grow", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="With no via, grow the destination (up to 3x) to "
+                        "fill the space instead of scrolling "
+                        "(--no-dest-grow to keep it standard size)")
     p.add_argument("--route-scale", type=int, default=2,
                    help="Pixel-scaling of the route number font "
                         "(2 = double size, fills the 40px panel top to "
