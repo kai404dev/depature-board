@@ -3,7 +3,9 @@
 Peak Rail departures board for Waveshare RGB-Matrix / rpi-rgb-led-matrix.
 
 Files working together (all next to this script unless --layout-dir):
-  api.py          fetching + formatting of the departures/timetable APIs
+  api.py          fetching + formatting of the HTRS departures/timetable APIs
+  rtt.py          Realtime Trains (RTT) data source, same departure shape
+  .env            RTT_TOKEN=... (read by rtt.py; keep out of git)
   layout/         look of the board, split per page:
                     shared.json  font roles, named colours, clock,
                                  page number, progress bar
@@ -12,10 +14,12 @@ Files working together (all next to this script unless --layout-dir):
                     page3.json   formation diagram
                   Every text line has its font, colour and position here --
                   edit + rerun, no code changes needed.
+  control.json    live control: {"page": 2} holds a page,
+                  {"source": "rtt"} / {"source": "htrs"} switches data source
   departures.py   this file: argument parsing + LED matrix rendering
   preview.py      hardware-free ASCII preview (--preview)
 
-Calls:
+Calls (HTRS):
   https://peakraildepartures.com/api/departures/?railway=PR&station=RWS&limit=3&date=2026-10-04
 
 and for each departure its timetable, e.g.:
@@ -28,6 +32,7 @@ Based on the example code in:
 
 Usage on Pi (3 panels chained, 240x40 total):
   sudo python3 departures.py --led-rows 40 --led-cols 80 --led-chain 3
+  sudo python3 departures.py ... --source rtt --rtt-station DBY
 
 Test on Mac / without hardware:
   python3 departures.py --mock --once
@@ -58,11 +63,12 @@ from api import (
     live_status,
 )
 
-import rtt 
+import rtt
 
 FONT_ROLES = ("top", "row", "small", "big", "tiny")
 COLOR_NAMES = ("text", "time", "platform", "ok", "alert", "mark")
 SOURCES = ("htrs", "rtt")
+
 
 def _bad(path, msg):
     sys.exit(f"layout {path}: {msg}")
@@ -429,17 +435,19 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     height = offscreen.height
     print(f"board {width}x{height} layout={layout_dir} "
           f"control={os.path.join(THIS_DIR, 'control.json')} "
-          f"pages={args.pages}", file=sys.stderr, flush=True)
+          f"pages={args.pages} source={args.source}",
+          file=sys.stderr, flush=True)
 
     board = []
     last_fetch = 0
     last_sig = None
-    last_source = None 
+    last_source = None
+    source = args.source
     idx = 0
     idx_since = time.time()
     page_idx = 0
     page_since = time.time()
-    scroll_need = 0.0
+    scroll_need = 0.0   # seconds the current page needs for one full scroll
     was_held = False
 
     control_path = os.path.join(THIS_DIR, "control.json")
@@ -447,12 +455,12 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
     layout_mt = layout_mtimes(layout_dir)
     control_mt = -1
     paused_page = None
-    ctl_source = None   
+    ctl_source = None
     last_hot_check = 0.0
     last_hot_err = None
 
     def check_hot():
-        """Hot-reload layout/*.json + read pause state.
+        """Hot-reload layout/*.json + read control.json (pause + source).
 
         Throttled, never fatal: bad files keep the old layout, bad
         control.json means keep cycling. Returns paused page or None.
@@ -487,7 +495,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                       "Run with --led-no-drop-privs or fix permissions.",
                       file=sys.stderr, flush=True)
             paused_page = None
-            ctl_source = None 
+            ctl_source = None
             control_mt = -1
             return paused_page
         if mt != control_mt:
@@ -609,7 +617,8 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
 
     def draw_scroll(fnt, col, text, y_base, max_x, xspec="left"):
         """Static if it fits within max_x, otherwise pause then loop-scroll
-        left. Anything right of max_x on the text row is blanked, so draw
+        left. The page waits (scroll_need) until one full pass is done.
+        Anything right of max_x on the text row is blanked, so draw
         whatever shares the row (clock, page number) AFTER calling this."""
         nonlocal scroll_need
         key = (id(fnt), text)
@@ -639,37 +648,11 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             for xx in range(max(0, max_x + 1), width):
                 offscreen.SetPixel(xx, yy, 0, 0, 0)
 
-
     def draw_calling(dep, spec, y_base):
-          """Calling-at line, scrolling when too long."""
-          if dep.get("calling_at"):
-              draw_scroll(F[spec["font"]], C[spec["color"]],
-                          dep["calling_at"], y_base, width - 2, spec["x"])
-          text = dep.get("calling_at")
-          if not text:
-              return
-          fnt = F[spec["font"]]
-          col = C[spec["color"]]
-          key = (spec["font"], text)
-          tw = scroll_w.get(key)
-          if tw is None:
-              if len(scroll_w) > 20:
-                  scroll_w.clear()
-              tw = scroll_w[key] = text_width(graphics, offscreen, fnt,
-                                              col, text)
-          if tw <= width - 2:
-              graphics.DrawText(offscreen, fnt,
-                                resolve_x(spec["x"], tw, width),
-                                y_base, col, text)
-              return
-          gap, pause, speed = 48, 2.5, 24.0   # px, seconds, px/second
-          period = tw + gap
-          t = time.time() % (pause + period / speed)
-          off = 0 if (t < pause or preview_frac is not None) \
-              else int((t - pause) * speed)
-          graphics.DrawText(offscreen, fnt, 1 - off, y_base, col, text)
-          graphics.DrawText(offscreen, fnt, 1 - off + period, y_base, col,
-                            text)
+        """Calling-at line, scrolling when too long."""
+        if dep.get("calling_at"):
+            draw_scroll(F[spec["font"]], C[spec["color"]],
+                        dep["calling_at"], y_base, width - 2, spec["x"])
 
     def draw_full(dep, y0):
         """One departure in full detail, starting at vertical offset y0."""
@@ -730,7 +713,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                           resolve_y(L["clock"]["y"], height),
                           C[L["clock"]["color"]], clock_s)
         draw_page_chrome(page, frac)
-      
+
     def draw_page3(dep, page, frac):
         """Train formation diagram: fixed-width coach cards, pointy front
         car, 1ST/wheelchair markers inside, letters underneath."""
@@ -790,8 +773,10 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             if fill_h > 0:
                 for yy in range(max(y_top + 1, yb - fill_h), yb):
                     if i == 0:
-                        frac = (yy - y_top) / max(1, bh - 1)
-                        xs = x + 1 + int(slant * (1 - frac))
+                        # NB: must not be called 'frac' -- that is the
+                        # progress-bar argument used by draw_page_chrome
+                        row_frac = (yy - y_top) / max(1, bh - 1)
+                        xs = x + 1 + int(slant * (1 - row_frac))
                     else:
                         xs = x + 1
                     for xx in range(xs, x1):
@@ -903,6 +888,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         now = time.time()
         paused = check_hot()
 
+        # --- data source + fetch -------------------------------------
         source = ctl_source or args.source
         if source != last_source:
             if last_source is not None:
@@ -922,12 +908,16 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
             if fresh is not None:
                 sig = board_signature(fresh)
                 if sig != last_sig:
+                    # content swaps underneath; the page dwell clock is
+                    # deliberately untouched so progress never restarts
                     board = fresh
                     last_sig = sig
                     idx = 0
                     idx_since = now
+                # else: data unchanged, keep the current display as-is
             last_fetch = now
 
+        # --- page selection ------------------------------------------
         held = paused in (1, 2, 3) and not getattr(
             args, "ignore_control", False)
         if held:
@@ -939,6 +929,8 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 # fresh dwell on unpause
                 was_held = False
                 page_since = now
+            # never leave a page before its scrolling text has made one
+            # full pass (scroll_need is set by draw_scroll last frame)
             if len(args.pages) > 1 and now - page_since >= max(
                     args.page_seconds, scroll_need):
                 page_idx = (page_idx + 1) % len(args.pages)
@@ -960,7 +952,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
 
         if not board:
             graphics.DrawText(offscreen, F["top"], 2, 1 + F["top"].baseline,
-                  C["alert"], f"No departures [{source.upper()}]")
+                              C["alert"], f"No departures [{source.upper()}]")
             draw_page_chrome(cur_page, frac)
         elif cur_page == 2:
             draw_page2(board[0], cur_page, frac)
@@ -1008,13 +1000,22 @@ def main():
                         "Page 1 = board, 2 = next departure big, "
                         "3 = formation diagram.")
     p.add_argument("--page-seconds", type=float, default=10,
-                   help="Seconds per page when cycling")
+                   help="Minimum seconds per page when cycling (a page with "
+                        "scrolling text stays until it has scrolled once)")
     p.add_argument("--mock", action="store_true",
                    help="Print to console instead of driving the LED matrix")
     p.add_argument("--once", action="store_true",
                    help="Fetch and draw once, then exit")
     p.add_argument("--preview", action="store_true",
                    help="ASCII preview of every page (no hardware needed)")
+    # Data source
+    p.add_argument("--source", default="htrs", choices=SOURCES,
+                   help="Data source at startup; switch live with "
+                        '{"source": "rtt"} in control.json')
+    p.add_argument("--rtt-station", default="MAT",
+                   help="Network Rail station code for RTT mode (e.g. DBY)")
+    p.add_argument("--rtt-refresh", type=int, default=60,
+                   help="Minimum seconds between RTT pulls (default 60)")
     # Matrix flags (mirrors SampleBase from the examples)
     p.add_argument("--led-rows", type=int, default=40)
     p.add_argument("--led-cols", type=int, default=80)
@@ -1043,13 +1044,6 @@ def main():
     p.add_argument("--led-panel-type", default="")
     p.add_argument("--led-inverse", action="store_true",
                    help="Switch if your matrix has inverse colors on.")
-    p.add_argument("--source", default="htrs", choices=SOURCES,
-                   help="Data source at startup; switch live with "
-                        '{"source": "rtt"} in control.json')
-    p.add_argument("--rtt-station", default="MAT",
-                   help="Network Rail station code for RTT mode")
-    p.add_argument("--rtt-refresh", type=int, default=60,
-                   help="Minimum seconds between RTT pulls (default 60)")
     args = p.parse_args()
 
     try:
@@ -1059,13 +1053,19 @@ def main():
     if not pages or any(x not in (1, 2, 3) for x in pages):
         sys.exit("--pages must be a combination of 1, 2 and 3")
     args.pages = pages
+    args.rtt_station = args.rtt_station.strip().upper()
 
     L = load_effective_layout(args.layout_dir)
 
     if args.date == "":
         args.date = None
 
-    rtt.set_token(rtt.load_token())
+    # Token is read now, before the LED library drops root privileges.
+    token = rtt.load_token()
+    rtt.set_token(token)
+    if args.source == "rtt" and not token:
+        sys.exit("RTT needs a token: put RTT_TOKEN=... in .env next to "
+                 "departures.py (or set $RTT_TOKEN / rtt_token.txt)")
 
     def get_board_data(source=None):
         if (source or args.source) == "rtt":
@@ -1073,6 +1073,7 @@ def main():
         deps = fetch_departures(args.railway, args.station,
                                 args.limit, args.date)
         return enrich_with_timetables(deps, args.railway, args.date)
+
     if args.preview:
         import copy
         import preview
@@ -1088,7 +1089,7 @@ def main():
             a2.pages = [pg]
             a2.once = True
             a2.ignore_control = True
-            run_matrix(a2, L, lambda: board, args.layout_dir,
+            run_matrix(a2, L, lambda source=None: board, args.layout_dir,
                        preview_frac=0.5)
             print(f"--- page {pg} preview ({W}x{H}) ---")
             rec.report()
@@ -1099,7 +1100,9 @@ def main():
             board = get_board_data()
         except Exception as e:
             sys.exit(f"API fetch failed: {e}")
-        print(f"# {args.railway}/{args.station} date={args.date or 'live'}")
+        print(f"# {args.source} "
+              f"{args.rtt_station if args.source == 'rtt' else args.railway + '/' + args.station} "
+              f"date={args.date or 'live'}")
         print(format_console(board))
         if 2 in args.pages and board:
             d = board[0]
