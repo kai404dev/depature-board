@@ -691,8 +691,7 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 cap = min(cap, clock_x - 3)
             graphics.DrawText(offscreen, nfont, 1, y3, ncol,
                               fit_text(graphics, offscreen, nfont, ncol,
-                                      notes[int(time.time() // 4)
-                                             % len(notes)], max(0, cap)))
+                                      draw_scroll(nfont, ncol, notes[0], y3, max(0, cap))
         graphics.DrawText(offscreen, clock_fnt, clock_x,
                           resolve_y(L["clock"]["y"], height),
                           C[L["clock"]["color"]], clock_s)
