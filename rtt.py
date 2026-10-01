@@ -1442,6 +1442,9 @@ def _apply_service(d, svc, station):
         + "."
     ) if stops else ""
 
+    if d.get("is_passing"):
+        text = "This service does not stop here."
+
     if op:
         text = (
             (text + " ")

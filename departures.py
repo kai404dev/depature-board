@@ -53,6 +53,7 @@ sys.path.insert(0, THIS_DIR)
 
 from api import (
     board_signature,
+    calling_display_text,
     enrich_with_timetables,
     expected_time,
     fetch_departures,
@@ -61,6 +62,7 @@ from api import (
     format_departure,
     formation_of,
     live_status,
+    next_passing_warning,
 )
 
 import rtt
@@ -649,10 +651,11 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                 offscreen.SetPixel(xx, yy, 0, 0, 0)
 
     def draw_calling(dep, spec, y_base):
-        """Calling-at line, scrolling when too long."""
-        if dep.get("calling_at"):
+        """Calling-at line (or the non-stop message), scrolling when long."""
+        text = calling_display_text(dep)
+        if text:
             draw_scroll(F[spec["font"]], C[spec["color"]],
-                        dep["calling_at"], y_base, width - 2, spec["x"])
+                        text, y_base, width - 2, spec["x"])
 
     def draw_full(dep, y0):
         """One departure in full detail, starting at vertical offset y0."""
@@ -697,8 +700,8 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         nfont = F[P2["note"]["font"]]
         ncol = C[P2["note"]["color"]]
         notes = list(dep.get("note_lines") or [])
-        if not notes and dep.get("calling_at"):
-            notes = [dep["calling_at"]]
+        if not notes:
+            notes = [calling_display_text(dep)]
         if not notes:
             notes = [f"{raw.get('headcode', '')} "
                      f"{raw.get('service_type_name', '')}".strip()]
@@ -831,6 +834,42 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
                           C[L["clock"]["color"]], clock_s)
         draw_page_chrome(page, frac)
 
+    def draw_passing_warning(dep):
+        """Fullscreen takeover: border round the whole display plus a
+        stand-back warning. Drawn instead of every page while a
+        non-stopping service is about to pass (see next_passing_warning).
+        No clock / page chrome -- maximum impact, nothing to misread."""
+        edge = C["alert"]
+        for xx in range(width):
+            offscreen.SetPixel(xx, 0, edge.red, edge.green, edge.blue)
+            offscreen.SetPixel(xx, 1, edge.red, edge.green, edge.blue)
+            offscreen.SetPixel(xx, height - 1, edge.red, edge.green,
+                               edge.blue)
+            offscreen.SetPixel(xx, height - 2, edge.red, edge.green,
+                               edge.blue)
+        for yy in range(height):
+            offscreen.SetPixel(0, yy, edge.red, edge.green, edge.blue)
+            offscreen.SetPixel(1, yy, edge.red, edge.green, edge.blue)
+            offscreen.SetPixel(width - 1, yy, edge.red, edge.green,
+                               edge.blue)
+            offscreen.SetPixel(width - 2, yy, edge.red, edge.green,
+                               edge.blue)
+        warn = C["alert"]
+        body = C["text"]
+        top_fnt = F["top"]
+        small_fnt = F["small"]
+        lines = [("FAST TRAIN PASSING", top_fnt, warn, 12),
+                 ("PLEASE STAND WELL BACK", small_fnt, body, 24),
+                 ("FROM THE PLATFORM EDGE", small_fnt, body, 33)]
+        for text, fnt, col, y_base in lines:
+            if y_base < 2 or y_base >= height - 1:
+                continue
+            text = fit_text(graphics, offscreen, fnt, col, text, width - 6)
+            tw = text_width(graphics, offscreen, fnt, col, text)
+            graphics.DrawText(offscreen, fnt,
+                              resolve_x("center", tw, width), y_base,
+                              col, text)
+
     def draw_static(page, frac):
         # Lead service + calling-at, then compact rows on a fixed pitch.
         # All positions from layout/page1.json.
@@ -950,7 +989,22 @@ def run_matrix(args, L, get_board_data, layout_dir, preview_frac=None):
         scroll_need = 0.0
         offscreen.Fill(0, 0, 0)
 
-        if not board:
+        # Safety takeover: a non-stopping service due within ~3 min
+        # replaces every page with the stand-back warning.
+        passing = next_passing_warning(board)
+        if passing is None:
+            draw_passing_warning._announced = None
+        if passing is not None:
+            if getattr(draw_passing_warning, "_announced", None) is not passing:
+                draw_passing_warning._announced = passing
+                try:
+                    t, dest, _, _ = format_departure(passing)
+                except Exception:
+                    t, dest = "?", "?"
+                print(f"passing warning: {t} {dest}",
+                      file=sys.stderr, flush=True)
+            draw_passing_warning(passing)
+        elif not board:
             graphics.DrawText(offscreen, F["top"], 2, 1 + F["top"].baseline,
                               C["alert"], f"No departures [{source.upper()}]")
             draw_page_chrome(cur_page, frac)
@@ -995,10 +1049,10 @@ def main():
                    help="Seconds per departure in rotate layout (default 5)")
     p.add_argument("--flip-seconds", type=float, default=3,
                    help="Seconds per side when flipping Delayed/expected time")
-    p.add_argument("--pages", default="1,2,3",
-                   help="Comma-separated pages to cycle, e.g. '1,2,3' or '1'. "
-                        "Page 1 = board, 2 = next departure big, "
-                        "3 = formation diagram.")
+    p.add_argument("--pages", default="1,3",
+                   help="Comma-separated pages to cycle, e.g. '1,3' or '1'. "
+                        "Page 1 = board, 2 = next departure big (disabled "
+                        "by default), 3 = formation diagram.")
     p.add_argument("--page-seconds", type=float, default=10,
                    help="Minimum seconds per page when cycling (a page with "
                         "scrolling text stays until it has scrolled once)")
@@ -1124,7 +1178,7 @@ def main():
             d = board[0]
             t, dest, _, _ = format_departure(d)
             cars, label = formation_of(
-                d, default_cars=L["page3"]["default_coaches"])
+                d, default_cars=L["page3"]["coach"]["default_coaches"])
             print("--- page 3 ---")
             print(f"{t} {dest} ({label})")
             cells = []

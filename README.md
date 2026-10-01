@@ -2,8 +2,12 @@
 
 Live departure board for three chained RGB LED panels on a Raspberry Pi,
 driven by [peakraildepartures.com](https://peakraildepartures.com).
-Three pages cycle on the panels: the departures board, the next
-departure big with service notes, and a train formation diagram.
+Two pages cycle on the panels: the departures board and a train
+formation diagram (the next-departure-big page 2 is disabled by
+default — re-enable with `--pages 1,2,3`). A non-stopping service
+shows "This service does not stop here" instead of calling-at points,
+and within 3 minutes of passing through it takes over the whole screen
+with a bordered stand-back warning.
 A web UI on port 4000 previews every page and live-edits the layout —
 tweaks reach the real LEDs within about a second, no restart.
 

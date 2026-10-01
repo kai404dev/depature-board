@@ -90,6 +90,8 @@ def departure_status(d):
     """Status text: delay / on-time info (no platform)."""
     if d.get("is_cancelled"):
         return "Cancelled"
+    if d.get("is_passing") or d.get("is_pass"):
+        return "Passing"
     if d.get("is_delayed"):
         return "Delayed"
     if d.get("is_tbc"):
@@ -146,10 +148,15 @@ def enrich_with_timetables(departures, railway, fallback_date, timeout=10):
 
     note_lines holds free-text info from the APIs: cancellation /
     delay / amendment reasons plus the timetable's operational notes.
+    Services that pass through without stopping here get is_passing=True
+    (timetable PASS movement at this station, no STOP/DEST here).
     """
     for d in departures:
         d["calling_at"] = ""
         d["note_lines"] = []
+        if is_passing_service(d):
+            d["is_passing"] = True
+            d["calling_at"] = NONSTOP_TEXT
         headcode = d.get("headcode")
         if not headcode:
             continue
@@ -158,8 +165,12 @@ def enrich_with_timetables(departures, railway, fallback_date, timeout=10):
                                  d.get("operating_date") or fallback_date,
                                  railway or d.get("railway"),
                                  timeout)
-            d["calling_at"] = calling_at_text(
-                tt, origin=d.get("origin") or d.get("station"))
+            here = d.get("origin") or d.get("station")
+            if _passes_here(tt, here):
+                d["is_passing"] = True
+                d["calling_at"] = NONSTOP_TEXT
+            else:
+                d["calling_at"] = calling_at_text(tt, origin=here)
             notes = []
             if d.get("is_cancelled") and d.get("cancellation_reason"):
                 notes.append(d["cancellation_reason"])
@@ -174,6 +185,130 @@ def enrich_with_timetables(departures, railway, fallback_date, timeout=10):
         except Exception as e:
             print(f"Timetable fetch failed for {headcode}: {e}", file=sys.stderr)
     return departures
+
+
+def _passes_here(timetable, here):
+    """True when the timetable passes (not stops) at this station."""
+    if not isinstance(timetable, dict) or not here:
+        return False
+    found_pass = False
+    for m in timetable.get("movements") or []:
+        if m.get("removed"):
+            continue
+        if (m.get("station") or "") != here:
+            continue
+        mt = (m.get("movement_type") or "").upper()
+        if mt in ("STOP", "DEST"):
+            return False
+        if mt == "PASS":
+            found_pass = True
+    return found_pass
+
+
+NONSTOP_TEXT = "This service does not stop here"
+
+PASS_WARNING_WINDOW = 180  # seconds before passing to take over the screen
+PASS_WARNING_GRACE = 30   # keep showing briefly as it passes
+
+
+def is_passing_service(d):
+    """True when this departure passes through without stopping here.
+
+    RTT sets is_passing; HTRS timetables mark it via enrich_with_timetables.
+    Other truthy spellings are accepted so future API shapes just work.
+    """
+    if not isinstance(d, dict):
+        return False
+    for key in ("is_passing", "is_pass", "passing", "passes_through",
+                "does_not_stop", "non_stopping"):
+        if d.get(key):
+            return True
+    for key in ("movement_type", "display_as", "displayAs", "call_type",
+                "callType"):
+        v = d.get(key)
+        if isinstance(v, str) and v.strip().upper() == "PASS":
+            return True
+    stops = d.get("stops_here", d.get("calls_here", None))
+    if stops is False:
+        return True
+    return False
+
+
+def calling_display_text(d):
+    """Calling-at line, or the non-stop message for passing services."""
+    if is_passing_service(d):
+        return NONSTOP_TEXT
+    return d.get("calling_at") or ""
+
+
+def _hhmm_to_today_ts(hhmm, now=None):
+    """HH:MM today (local time) -> unix timestamp. None when unparseable."""
+    if not isinstance(hhmm, str) or len(hhmm) < 5:
+        return None
+    try:
+        h, m = int(hhmm[0:2]), int(hhmm[3:5])
+    except ValueError:
+        return None
+    if not (0 <= h < 24 and 0 <= m < 60):
+        return None
+    now = now if now is not None else time.time()
+    lt = time.localtime(now)
+    ts = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, h, m, 0,
+                      lt.tm_wday, lt.tm_yday, lt.tm_isdst))
+    # midnight wrap: a 00:xx service seen at 23:xx is tomorrow, and a
+    # 23:xx service seen at 00:xx was yesterday
+    if ts - now > 12 * 3600:
+        ts -= 24 * 3600
+    elif now - ts > 12 * 3600:
+        ts += 24 * 3600
+    return ts
+
+
+def passing_eta_seconds(d, now=None):
+    """Seconds until this service passes here. None when unknown.
+
+    Uses absolute RTT timestamps when present, otherwise the expected
+    (delay-adjusted) HH:MM parsed as today. HTRS rows pinned to a
+    different operating day are skipped to avoid false alarms.
+    """
+    if not is_passing_service(d):
+        return None
+    now = now if now is not None else time.time()
+    for key in ("_expected_ts", "_scheduled_ts"):
+        ts = d.get(key)
+        if isinstance(ts, (int, float)) and ts > 0:
+            return ts - now
+    op_date = d.get("operating_date")
+    if op_date and isinstance(op_date, str) and len(op_date) >= 10:
+        today = time.strftime("%Y-%m-%d", time.localtime(now))
+        if op_date[:10] != today:
+            return None
+    ts = _hhmm_to_today_ts(expected_time(d), now)
+    if ts is None:
+        ts = _hhmm_to_today_ts(d.get("planned_time")
+                               or d.get("scheduled_time"), now)
+    if ts is None:
+        return None
+    return ts - now
+
+
+def next_passing_warning(board, now=None, window=PASS_WARNING_WINDOW,
+                         grace=PASS_WARNING_GRACE):
+    """Nearest passing service due within `window` seconds (or that just
+    passed within `grace`). Returns the departure dict or None."""
+    if not board:
+        return None
+    now = now if now is not None else time.time()
+    best, best_eta = None, None
+    for d in board:
+        if d.get("is_cancelled"):
+            continue
+        eta = passing_eta_seconds(d, now)
+        if eta is None or eta > window or eta < -grace:
+            continue
+        if best is None or eta < best_eta:
+            best, best_eta = d, eta
+    return best
 
 
 def live_status(raw, flip_seconds):
@@ -194,8 +329,9 @@ def format_console(departures):
         if raw.get("is_delayed") and not raw.get("is_cancelled"):
             right += f" (Exp {expected_time(raw)})"
         out.append(f"{t} {dest} [{right}]")
-        if d.get("calling_at"):
-            out.append(f"  {d['calling_at']}")
+        line = calling_display_text(d)
+        if line:
+            out.append(f"  {line}")
     return "\n".join(out)
 
 
@@ -205,8 +341,9 @@ def board_signature(departures):
     for d in departures:
         t, dest, status, raw = format_departure(d)
         rows.append((t, dest, status, raw.get("platform"),
-                     d.get("calling_at", ""),
+                     calling_display_text(d),
                      tuple(d.get("note_lines") or []),
+                     bool(is_passing_service(d)),
                      json.dumps(d.get("formation", {}), sort_keys=True),
                      d.get("coaches"), json.dumps(d.get("units", []))))
     return json.dumps(rows, sort_keys=True)
