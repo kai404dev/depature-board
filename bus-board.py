@@ -284,10 +284,11 @@ def run_board(args, services):
     print(f"bus board {W}x{H} services={len(services)}",
           file=sys.stderr, flush=True)
 
-    # Vertical geometry: route fills bottom-to-top (centred by
-    # spanning the full height), dest pinned to the top, via centred
-    # in the bottom half (all overridable for other panel heights).
-    route_y = args.main_y if args.main_y is not None else H - 1
+    # Vertical geometry: route digits vertically centred (their lit
+    # band sits in the upper part of the doubled glyph box, so the
+    # baseline sits above panel bottom), dest pinned to the top, via
+    # centred in the bottom half (all overridable for other heights).
+    route_y = args.main_y if args.main_y is not None else H - 7
     dest_y = args.dest_y if args.dest_y is not None else H // 2 - 3
     via_y = args.via_y if args.via_y is not None else H - 5
 
@@ -402,8 +403,7 @@ def main():
                         "bottom; 1 = unscaled)")
     p.add_argument("--main-y", type=int, default=None,
                    help="Baseline of the route number "
-                        "(default: fills the panel bottom-to-top, "
-                        "centred by spanning the full height)")
+                        "(default: digits vertically centred)")
     p.add_argument("--dest-y", type=int, default=None,
                    help="Baseline of the destination "
                         "(default: pinned to the top)")
