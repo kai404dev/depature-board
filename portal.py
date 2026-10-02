@@ -534,7 +534,7 @@ box-shadow:0 3px 0 #000,inset 0 1px 0 rgba(255,255,255,.12)}
 .nav button.no{color:#ff4444;border-radius:12px}
 .nav .blank{background:none;border:0;box-shadow:none;cursor:default}
 /* below the unit: functional extras, kept quiet */
-.dests{display:flex;flex-wrap:wrap;gap:8px;max-width:820px;justify-content:center}
+.dests{display:flex;flex-wrap:wrap;gap:8px;max-width:100%;justify-content:center}
 .dests span{background:#26262c;border:1px solid #3a3a42;border-radius:6px;
 padding:6px 11px;font-size:14px;color:#cfcfd6}
 .dests span.cur{background:#1d5c2e;border-color:#1d5c2e;color:#fff}
