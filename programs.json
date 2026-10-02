@@ -1,5 +1,5 @@
 {
-  "rotate_seconds": 10,
+  "rotate_seconds": 5,
   "image_fit": "fit",
   "colour": "#ff8000",
   "programs": {
@@ -20,6 +20,13 @@
         "Sutton Coldfield":["bitmap/destinations/X12/sutton coldfield/X12-Sutton-Coldfield-only.png"],
         "Lichfield then Sutton Coldfield":["bitmap/destinations/X12/lichfield/X12-Lichfield-then-sutton.png"],
         "Lichfield then Sutton Burton":["bitmap/destinations/X12/lichfield/X12-Lichfield-then-burton.png"]
+      }
+    },
+    "000": {
+      "route": "000",
+      "destinations": {
+        "nis":["bitmap/destinations/000/not-in-service.png"],
+        "learner":["bitmap/destinations/000/learner.png"]
       }
     }
   }
