@@ -96,27 +96,24 @@
       "code": "000",
       "destinations": {
         "nis": [
-          "bitmap/destinations/000/not-in-service.png"
+          "bitmap/destinations/journeywise/other/not-in-service.png"
         ],
         "learner": [
-          "bitmap/destinations/000/learner.png"
+          "bitmap/destinations/journeywise/other/learner.png"
         ],
         "JW": {
           "colour": "full",
           "images": [
-            "bitmap/destinations/journeywise/otherjourneywise midlands.png",
-            "bitmap/destinations/journeywise/otherjourneywise.png"
+            "bitmap/destinations/journeywise/other/journeywise midlands.png",
+            "bitmap/destinations/journeywise/other/journeywise.png"
           ]
         },
         "JW Pride": {
           "colour": "full",
           "images": [
-            "bitmap/destinations/journeywise/otherPride.png"
+            "bitmap/destinations/journeywise/other/Pride.png"
           ]
-        },
-        "Midland Classic": [
-          "bitmap/destinations/journeywise/othermdcl.png"
-        ]
+        }
       }
     },
     "C1": {
