@@ -16,7 +16,7 @@
       }
     },
     "40": {
-      "colour": "full",
+      
       "route": "40",
       "code": "040",
       "destinations": {
@@ -275,7 +275,7 @@
       "code": "12",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/X2/X2-burton.png"
+          "bitmap/destinations/journeywise/X2/X2-burton.png",
         ],
         "Lichfield": [
           "bitmap/destinations/journeywise/X2/X2-lichfield.png"
