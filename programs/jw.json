@@ -18,6 +18,9 @@
         ]},
         "Gay": {"colour": "RGB", "images": [
           "bitmap/fun/gaydrew.png"
+        ]},
+        "Pride": {"colour": "RGB", "images": [
+          "bitmap/destinations/logos/Pride.png"
         ]}
       }
     },
