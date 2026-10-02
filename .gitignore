@@ -5,5 +5,6 @@ layout/local.json
 rtt_token.txt
 darwin_token.txt
 darwin_kafka_state.json
+program_control.json
 .DS_Store
 *~lock~
