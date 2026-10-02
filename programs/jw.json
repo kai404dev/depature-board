@@ -190,12 +190,11 @@
       "code": "401",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/V1/v1-burton.png"
+          "bitmap/destinations/journeywise/V1/v1-burton.png",
+          "bitmap/destinations/journeywise/V1/v1-the-villages.png"
         ],
         "Derby": [
-          "bitmap/destinations/journeywise/V1/v1-derby.png"
-        ],
-        "The Villages": [
+          "bitmap/destinations/journeywise/V1/v1-derby.png",
           "bitmap/destinations/journeywise/V1/v1-the-villages.png"
         ]
       }
@@ -206,12 +205,11 @@
       "code": "402",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/V2/v2-burton.png"
+          "bitmap/destinations/journeywise/V2/v2-burton.png",
+          "bitmap/destinations/journeywise/V2/v2-the-villages.png"
         ],
         "Derby": [
-          "bitmap/destinations/journeywise/V2/v2-derby.png"
-        ],
-        "The Villages": [
+          "bitmap/destinations/journeywise/V2/v2-derby.png",
           "bitmap/destinations/journeywise/V2/v2-the-villages.png"
         ]
       }
@@ -222,12 +220,11 @@
       "code": "403",
       "destinations": {
         "Nottingham": [
-          "bitmap/destinations/journeywise/V3/v3-nottingham.png"
+          "bitmap/destinations/journeywise/V3/v3-nottingham.png",
+          "bitmap/destinations/journeywise/V3/v3-the-villages.png"
         ],
         "Radcliffe": [
-          "bitmap/destinations/journeywise/V3/v3-radcliffe.png"
-        ],
-        "The Villages": [
+          "bitmap/destinations/journeywise/V3/v3-radcliffe.png",
           "bitmap/destinations/journeywise/V3/v3-the-villages.png"
         ]
       }
@@ -237,11 +234,9 @@
       "route": "V4",
       "code": "404",
       "destinations": {
-        "The Villages": [
-          "bitmap/destinations/journeywise/V4/v4-the-villages.png"
-        ],
         "Thorneywood Circular": [
-          "bitmap/destinations/journeywise/V4/v4-thorneywood-circular.png"
+          "bitmap/destinations/journeywise/V4/v4-thorneywood-circular.png",
+          "bitmap/destinations/journeywise/V4/v4-the-villages.png"
         ]
       }
     },
