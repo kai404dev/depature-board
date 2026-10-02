@@ -227,15 +227,21 @@ def load_frame(path, W, H, mode):
 
 
 def tint_frame(frame, colour):
-    """Multiply-tint an RGB frame: black stays black, bright pixels
-    take the colour (e.g. white text becomes amber with #ffbb00)."""
+    """Render an RGB frame in one colour at the same brightness.
+
+    Each pixel's luminance (Rec. 601) scales the override colour, so
+    even a full-colour image shows as pure monochrome: black stays
+    black, and every lit pixel takes the colour at its own
+    brightness. (Use "full" instead to keep the image's colours.)"""
     r, g, b = colour
     out = bytearray(len(frame))
     for i in range(len(frame) // 3):
         o = i * 3
-        out[o] = (frame[o] * r + 127) // 255
-        out[o + 1] = (frame[o + 1] * g + 127) // 255
-        out[o + 2] = (frame[o + 2] * b + 127) // 255
+        lum = (299 * frame[o] + 587 * frame[o + 1] +
+               114 * frame[o + 2] + 500) // 1000
+        out[o] = (lum * r + 127) // 255
+        out[o + 1] = (lum * g + 127) // 255
+        out[o + 2] = (lum * b + 127) // 255
     return out
 
 

@@ -6,7 +6,6 @@
     "000": {
       "route": "000",
       "code": "000",
-      "code": "000",
       "destinations": {
         "nis": [
           "bitmap/destinations/000/not-in-service.png"
@@ -71,7 +70,6 @@
       "colour": "full",
       "route": "C1",
       "code": "21",
-      "code": "21",
       "destinations": {
         "Connect": [
           "bitmap/destinations/journeywise/Connect/C1/c1-connect.png"
@@ -85,7 +83,6 @@
       "colour": "full",
       "route": "C2",
       "code": "22",
-      "code": "22",
       "destinations": {
         "Connect": [
           "bitmap/destinations/journeywise/Connect/C2/c2-connect.png"
@@ -98,7 +95,6 @@
     "C3": {
       "colour": "full",
       "route": "C3",
-      "code": "23",
       "code": "23",
       "destinations": {
         "Burton": [
@@ -116,7 +112,6 @@
       "colour": "full",
       "route": "C4",
       "code": "24",
-      "code": "24",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/Connect/C4/c4-burton.png"
@@ -132,7 +127,6 @@
     "C5": {
       "colour": "full",
       "route": "C5",
-      "code": "25",
       "code": "25",
       "destinations": {
         "Connect": [
@@ -150,7 +144,6 @@
       "colour": "full",
       "route": "C6",
       "code": "26",
-      "code": "26",
       "destinations": {
         "Acorn": [
           "bitmap/destinations/journeywise/Connect/C6/c6-acorn.png"
@@ -167,7 +160,6 @@
       "colour": "full",
       "route": "D1",
       "code": "41",
-      "code": "41",
       "destinations": {
         "Derby": [
           "bitmap/destinations/journeywise/D1/d1-derby.png"
@@ -177,7 +169,6 @@
     "D2": {
       "colour": "full",
       "route": "D2",
-      "code": "42",
       "code": "42",
       "destinations": {
         "Derby": [
@@ -192,7 +183,6 @@
       "colour": "full",
       "route": "NMA",
       "code": "311",
-      "code": "311",
       "destinations": {
         "Alrewas": [
           "bitmap/destinations/journeywise/NMA/nma-alrewas.png"
@@ -205,7 +195,6 @@
     "V1": {
       "colour": "full",
       "route": "V1",
-      "code": "31",
       "code": "31",
       "destinations": {
         "Burton": [
@@ -223,7 +212,6 @@
       "colour": "full",
       "route": "V2",
       "code": "32",
-      "code": "32",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/V2/v2-burton.png"
@@ -239,7 +227,6 @@
     "V3": {
       "colour": "full",
       "route": "V3",
-      "code": "33",
       "code": "33",
       "destinations": {
         "Nottingham": [
@@ -257,7 +244,6 @@
       "colour": "full",
       "route": "V4",
       "code": "34",
-      "code": "34",
       "destinations": {
         "The Villages": [
           "bitmap/destinations/journeywise/V4/v4-the-villages.png"
@@ -270,7 +256,6 @@
     "X1": {
       "colour": "full",
       "route": "X1",
-      "code": "11",
       "code": "11",
       "destinations": {
         "Burton": [
@@ -285,7 +270,6 @@
       "colour": "full",
       "route": "X2",
       "code": "12",
-      "code": "12",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/X2/X2-burton.png"
@@ -298,7 +282,6 @@
     "X3": {
       "colour": "full",
       "route": "X3",
-      "code": "13",
       "code": "13",
       "destinations": {
         "Derby": [
@@ -313,7 +296,6 @@
       "colour": "full",
       "route": "X4",
       "code": "14",
-      "code": "14",
       "destinations": {
         "Birmingham": [
           "bitmap/destinations/journeywise/X4/X4-birmingham.png"
@@ -326,7 +308,6 @@
     "X5": {
       "colour": "full",
       "route": "X5",
-      "code": "15",
       "code": "15",
       "destinations": {
         "Birmingham": [
@@ -341,7 +322,6 @@
       "colour": "full",
       "route": "X8",
       "code": "18",
-      "code": "18",
       "destinations": {
         "Leicester": [
           "bitmap/destinations/journeywise/X8/X8-leicester.png"
@@ -354,7 +334,6 @@
     "X43": {
       "colour": "full",
       "route": "X43",
-      "code": "143",
       "code": "143",
       "destinations": {
         "Burton": [
@@ -374,7 +353,6 @@
     "X66": {
       "colour": "full",
       "route": "X66",
-      "code": "166",
       "code": "166",
       "destinations": {
         "Lichfield": [
