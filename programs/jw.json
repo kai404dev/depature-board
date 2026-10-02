@@ -104,18 +104,18 @@
         "JW": {
           "colour": "full",
           "images": [
-            "bitmap/destinations/logos/journeywise midlands.png",
-            "bitmap/destinations/logos/journeywise.png"
+            "bitmap/destinations/journeywise/otherjourneywise midlands.png",
+            "bitmap/destinations/journeywise/otherjourneywise.png"
           ]
         },
         "JW Pride": {
           "colour": "full",
           "images": [
-            "bitmap/destinations/logos/Pride.png"
+            "bitmap/destinations/journeywise/otherPride.png"
           ]
         },
         "Midland Classic": [
-          "bitmap/destinations/logos/mdcl.png"
+          "bitmap/destinations/journeywise/othermdcl.png"
         ]
       }
     },
