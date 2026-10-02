@@ -82,9 +82,9 @@ are rejected with a plain error.
 
 Defaults cascade screen → destination → route → file → built-in
 (10s, fit, no tint). A screen is a path or an object overriding
-`seconds` / `fit` / `colour`. Colour renders the whole image in
-that one colour at the same brightness (luminance-mapped
-monochrome); `"full"` keeps the image's own colours. `"color"`
+`seconds` / `fit` / `colour`. Colour flattens the whole image to
+exactly that one shade (any lit pixel takes it at full
+brightness); `"full"` keeps the image's own colours. `"color"`
 also works everywhere `"colour"` does.
 
 ## Control file

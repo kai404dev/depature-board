@@ -226,22 +226,24 @@ def load_frame(path, W, H, mode):
     return sw, sh, scale_pixels(rgb, sw, sh, W, H, mode)
 
 
-def tint_frame(frame, colour):
-    """Render an RGB frame in one colour at the same brightness.
+LIT_AT = 16  # luminance floor: below this counts as background
 
-    Each pixel's luminance (Rec. 601) scales the override colour, so
-    even a full-colour image shows as pure monochrome: black stays
-    black, and every lit pixel takes the colour at its own
-    brightness. (Use "full" instead to keep the image's colours.)"""
+
+def tint_frame(frame, colour):
+    """Flatten an RGB frame to exactly one colour.
+
+    Any pixel brighter than background becomes the override colour
+    at full brightness, so a blue route number and white text both
+    land on the same single shade. (Use "full" instead to keep the
+    image's own colours and shading.)"""
     r, g, b = colour
     out = bytearray(len(frame))
     for i in range(len(frame) // 3):
         o = i * 3
         lum = (299 * frame[o] + 587 * frame[o + 1] +
                114 * frame[o + 2] + 500) // 1000
-        out[o] = (lum * r + 127) // 255
-        out[o + 1] = (lum * g + 127) // 255
-        out[o + 2] = (lum * b + 127) // 255
+        if lum >= LIT_AT:
+            out[o], out[o + 1], out[o + 2] = r, g, b
     return out
 
 

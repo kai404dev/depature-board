@@ -23,10 +23,10 @@ programs.json:
   }
 
 Colour override: any destination (or screen) takes "colour":
-"#ffbb00", and the whole image renders in that one colour at the
-same brightness (luminance keeps the shading, hue goes). "colour":
-"full" keeps the image's own full colours instead (explicitly no
-tint, beating any default):
+"#ffbb00", and the whole image flattens to exactly that one shade
+(blue route numbers and white text alike). "colour": "full" keeps
+the image's own full colours instead (explicitly no tint, beating
+any default):
 
       "401": {
         "route": "401",
