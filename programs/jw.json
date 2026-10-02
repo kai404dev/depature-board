@@ -13,13 +13,10 @@
         "learner": [
           "bitmap/destinations/000/learner.png"
         ],
-        "JourneyWise": {"colour": "full", "images": [
+        "JW": {"colour": "full", "images": [
           "bitmap/destinations/logos/journeywise.png"
         ]},
-        "Gay": {"colour": "RGB", "images": [
-          "bitmap/fun/gaydrew.png"
-        ]},
-        "Pride": {"colour": "full", "images": [
+        "JW Pride": {"colour": "full", "images": [
           "bitmap/destinations/logos/Pride.png"
         ]}
       }
