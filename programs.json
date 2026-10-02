@@ -1,7 +1,7 @@
 {
   "rotate_seconds": 10,
   "image_fit": "fit",
-  "colour": "#ff8c00",
+  "colour": "#ff8000",
   "programs": {
     "401": {
       "route": "401",
