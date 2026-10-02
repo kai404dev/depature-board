@@ -73,6 +73,7 @@ from images import load_frame, tint_frame
 DEFAULT_ROTATE = 10
 DEFAULT_FIT = "fit"
 FITS = ("fit", "fill", "stretch")
+CONTROL_FILE = os.path.join(THIS_DIR, "program_control.json")
 
 
 def load_programs_file(path):
@@ -319,16 +320,48 @@ def run_program(args, prog, watch=None):
         time.sleep(0.5)
 
 
-def run_dynamic(args, ctl):
-    """Matrix loop following the portal controller's live selection.
+def read_control(path):
+    """Selection written by the portal: (program, destination|None).
+    None when absent/unreadable -- the CLI selection stands."""
+    try:
+        with open(path) as f:
+            c = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(c, dict):
+        return None
+    p, d = c.get("program"), c.get("destination")
+    if not isinstance(p, str) or not p:
+        return None
+    if d is not None and not isinstance(d, str):
+        return None
+    return (p, d)
 
-    Re-resolves and reloads frames whenever the route, destination
-    or program file changes; keeps the old screens if the file
-    momentarily breaks.
+
+def run_dynamic(args, ctl):
+    """Matrix loop following the live selection.
+
+    The portal (same process, or another one via program_control.json)
+    drives; a broken program file keeps the old screens. The CLI
+    selection wins at startup -- the control file only takes over
+    when it changes afterwards.
     """
     last = None
+    last_file = read_control(CONTROL_FILE)
     while True:
         ctl.refresh()
+        cur_file = read_control(CONTROL_FILE)
+        if cur_file != last_file:
+            last_file = cur_file
+            if cur_file is not None and \
+                    cur_file != ctl.selection():
+                if ctl.adopt(*cur_file):
+                    print(f"control: showing {cur_file[0]} / "
+                          f"{cur_file[1] or 'all'}",
+                          file=sys.stderr, flush=True)
+                else:
+                    print(f"control: ignoring {cur_file}",
+                          file=sys.stderr, flush=True)
         key = ctl.key()
         if key != last:
             try:
@@ -341,7 +374,8 @@ def run_dynamic(args, ctl):
             last = key
             run_program(args, prog,
                         watch=lambda k=key: ctl.refresh() or
-                        ctl.key() != k)
+                        ctl.key() != k or
+                        read_control(CONTROL_FILE) != last_file)
             if args.once:
                 break
         else:
@@ -398,17 +432,22 @@ def main():
         args.program_file)
 
     ctl = None
-    if args.portal or args.serve:
+    if args.serve or args.portal or \
+            (not args.mock and not args.preview and not args.list):
+        # every live matrix run follows the live selection: CLI seeds
+        # it, the portal (here or another process via
+        # program_control.json) steers it afterwards.
         from portal import Controller, serve
         ctl = Controller(args.program_file, program=args.program,
-                         dest=args.destination)
+                         dest=args.destination, control=CONTROL_FILE)
         if args.serve:
             serve(ctl, args.port)  # blocking
             return
-        import threading
-        threading.Thread(target=serve, args=(ctl, args.port),
-                         daemon=True).start()
-        print(f"portal on :{args.port}", file=sys.stderr, flush=True)
+        if args.portal:
+            import threading
+            threading.Thread(target=serve, args=(ctl, args.port),
+                             daemon=True).start()
+            print(f"portal on :{args.port}", file=sys.stderr, flush=True)
         run_dynamic(args, ctl)
         return
 

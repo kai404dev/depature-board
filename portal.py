@@ -72,10 +72,15 @@ def decode_keypad(code, routes, ids_of):
 
 
 class Controller:
-    """Live selection shared between the portal and the matrix loop."""
+    """Live selection shared between the portal and the matrix loop.
 
-    def __init__(self, path, program=None, dest=None):
+    Confirmed picks are also written to a control file so a matrix
+    run in another process follows the portal (and vice versa).
+    """
+
+    def __init__(self, path, program=None, dest=None, control=None):
         self.path = path
+        self.control = control
         self.lock = threading.Lock()
         self.mtime = None
         self.data = None
@@ -173,8 +178,8 @@ class Controller:
             return []
         return model.destination_ids(raw, self.program_name)
 
-    def _match_dest(self, dest):
-        for d, _ in self._ids():
+    def _match_dest(self, dest, program=None):
+        for d, _ in self._ids_for(program or self.program_name):
             if d.lower() == str(dest).lower():
                 return d
         return None
@@ -194,6 +199,7 @@ class Controller:
     def press(self, k):
         with self.lock:
             self._refresh_locked()
+            sel0 = (self.program_name, self.dest_name)
             k = str(k)
             if k == "F1":
                 self.field, self.buffer = "line", ""
@@ -222,7 +228,45 @@ class Controller:
                 self._confirm()
             else:
                 self.message = f"Unknown key {k}"
+            if (self.program_name, self.dest_name) != sel0:
+                self._save_control()
             return self._snapshot_locked()
+
+    def _save_control(self):
+        if not self.control:
+            return
+        try:
+            with open(self.control, "w") as f:
+                json.dump({"program": self.program_name,
+                           "destination": self.dest_name}, f)
+        except OSError as e:
+            self.message = f"Cannot write control: {e}"
+
+    def adopt(self, program, dest):
+        """Take a selection from the control file. False + message
+        when it names something unknown."""
+        with self.lock:
+            self._refresh_locked()
+            if program not in self.data[1]:
+                self.message = f"Ignoring control: no program " \
+                    f"'{program}'"
+                return False
+            if dest is not None:
+                dest = self._match_dest(dest, program)
+                if dest is None:
+                    self.message = f"Ignoring control: no such " \
+                        f"destination"
+                    return False
+            self.program_name = program
+            self.dest_name = dest
+            self.field, self.buffer = "line", ""
+            self.hi = self._dest_index()
+            self.message = ""
+            return True
+
+    def selection(self):
+        with self.lock:
+            return (self.program_name, self.dest_name)
 
     def _clamp(self, program, dest):
         if program not in self.data[1]:

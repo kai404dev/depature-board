@@ -32,12 +32,31 @@ tweaks reach the real LEDs within about a second, no restart.
 | `layout/page3.json` | Formation diagram (coaches, markers, letters) |
 | `layout/local.json` | **Your** live overrides (untracked — see below) |
 | `control.json` | `{"page": null}` cycle, or `1/2/3` to hold a page |
+| `program.py` | Image programmes for the bus board (`programs.json`) |
+| `portal.py` | ICU 602 replica web portal on `:4040` (drives `program.py`) |
+| `images.py` | Stdlib PNG decode/scale/tint shared by both boards |
+| `programs.json` | Routes, destinations, image screens, colours, ids |
+| `program_control.json` | Portal's live pick — every matrix run follows it |
+| `bitmap/` | Programme PNGs |
+| `docs/portal.md` | Portal + programmes manual |
 | `fonts/` | Bundled BDF fonts |
 | `install.sh` | Pi one-shot installer for the `rgbmatrix` driver |
 
 `--mock` prints board data to the console (no hardware).
 `--preview` prints a to-scale ASCII map of every page with element
 bounds and overlap warnings — the fastest way to check spacing.
+
+## Bus image programmes + portal
+
+`program.py` plays full-panel PNG programmes from `programs.json`
+(route → destinations → ordered screens, 10s default dwell, optional
+colour tints). With `--portal` it also serves a Mobitec ICU 602
+replica on `:4040`: F1 enters the route, F2 picks the destination
+(arrows or numeric id), the keypad takes codes like `40101` or
+`11204` (X12 dest 4 — letter routes take a leading `1`, or define a
+custom `"code"`). Picks reach the LEDs within about half a second,
+even across processes via `program_control.json`. Full manual:
+`docs/portal.md`.
 
 ## Carriage loadings (Darwin, RTT mode only)
 
