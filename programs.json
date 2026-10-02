@@ -28,6 +28,14 @@
         "nis":["bitmap/destinations/000/not-in-service.png"],
         "learner":["bitmap/destinations/000/learner.png"]
       }
+    },
+    "igo": {
+      "route": "igo",
+      "code": "446",
+      "destinations": {
+        "Derby":["bitmap/destinations/igo/Derby/igo-derby-1.png"],
+        "Nottingham":["bitmap/destinations/igo/Nottingham/igo-nottingham-1.png"]
+      }
     }
   }
 }

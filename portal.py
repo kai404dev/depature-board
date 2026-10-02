@@ -26,22 +26,29 @@ def has_letter(route):
 
 
 def match_route(buf, routes):
-    """Match a typed route against [(program, route)]. Letter routes
-    can be typed with a leading 1 (112 -> X12 when digits match)."""
+    """Match a typed route against [(program, route, code)]. Letter
+    routes can be typed with a leading 1 (112 -> X12 when digits
+    match); any route also answers to its custom file "code"."""
     b = str(buf).strip().upper()
-    for n, r in routes:
+    for n, r, c in routes:
         if r and str(r).upper() == b:
+            return n
+    for n, r, c in routes:
+        if c and str(c).upper() == b:
             return n
     if len(b) > 1 and b.startswith("1"):
         rest = b[1:]
-        for n, r in routes:
+        for n, r, c in routes:
             if r and str(r).upper() == rest:
                 return n
-        hits = [n for n, r in routes
+        for n, r, c in routes:
+            if c and str(c).upper() == rest:
+                return n
+        hits = [n for n, r, c in routes
                 if r and has_letter(r) and numeric_route(r) == rest]
         if len(hits) == 1:
             return hits[0]
-    hits = [n for n, r in routes
+    hits = [n for n, r, c in routes
             if r and has_letter(r) and numeric_route(r) == b]
     if len(hits) == 1:
         return hits[0]
@@ -77,7 +84,8 @@ class Controller:
         self.program_name = None
         self.dest_name = None
         if not self._refresh_locked():
-            sys.exit(f"portal: cannot load {path}")
+            why = f": {self.message}" if self.message else ""
+            sys.exit(f"portal: cannot load {path}{why}")
         names = list(self.data[1])
         if program is None:
             program = names[0]
@@ -112,7 +120,15 @@ class Controller:
             for nm, raw in data[1].items():
                 if isinstance(raw, dict):
                     model.destination_ids(raw, nm)
+                    code = raw.get("code", "")
+                    if code not in (None, "") and \
+                            not str(code).strip().isdigit():
+                        raise ValueError(
+                            f"program '{nm}': code must be digits")
         except SystemExit as e:
+            self.message = str(e)
+            return False
+        except ValueError as e:
             self.message = str(e)
             return False
         self.data = data
@@ -143,8 +159,13 @@ class Controller:
 
     # -- helpers (lock held by caller) ------------------------------
     def _routes(self):
-        return [(n, r.get("route", "") if isinstance(r, dict) else "")
-                for n, r in self.data[1].items()]
+        out = []
+        for n, r in self.data[1].items():
+            if not isinstance(r, dict):
+                continue
+            out.append((n, r.get("route", ""),
+                        str(r.get("code", "") or "").strip()))
+        return out
 
     def _ids(self):
         raw = self.data[1].get(self.program_name)
@@ -327,8 +348,8 @@ class Controller:
             "buffer": self.buffer,
             "hi": self.hi,
             "message": self.message,
-            "routes": [{"program": n, "route": r or n}
-                       for n, r in self._routes()],
+            "routes": [{"program": n, "route": r or n, "code": c}
+                       for n, r, c in self._routes()],
             "destinations": [{"name": d, "id": di} for d, di in ids],
         }
 

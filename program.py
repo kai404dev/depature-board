@@ -416,6 +416,8 @@ def main():
         for name in sorted(progs):
             raw = progs[name] if isinstance(progs[name], dict) else {}
             route = raw.get("route", "?")
+            code = str(raw.get("code", "") or "").strip()
+            ctag = f" [code {code}]" if code else ""
             dests = raw.get("destinations", [])
             if isinstance(dests, dict):
                 parts = []
@@ -425,14 +427,14 @@ def main():
                         v = v.get("images", v.get("screens", []))
                     n = len(v) if isinstance(v, list) else 0
                     parts.append(f"{d}#{i}x{n}")
-                print(f"{name}: route {route} "
+                print(f"{name}: route {route}{ctag} "
                       f"({', '.join(parts)})")
                 continue
             if isinstance(dests, str):
                 dests = [dests]
             n = len(raw.get("screens", [])) \
                 if isinstance(raw.get("screens"), list) else 0
-            print(f"{name}: route {route} "
+            print(f"{name}: route {route}{ctag} "
                   f"({', '.join(str(d) for d in dests)}) "
                   f"{n} screens")
         return
