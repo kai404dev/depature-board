@@ -19,7 +19,10 @@
         ]},
         "JW Pride": {"colour": "full", "images": [
           "bitmap/destinations/logos/Pride.png"
-        ]}
+        ]},
+        "Midland Classic": [
+          "bitmap/destinations/logos/mdcl.png"
+        ]
       }
     },
     "40": {
