@@ -35,8 +35,9 @@ bright pixels take the colour:
         }
       }
 
-("color" also accepted.) Colour cascades screen -> destination;
-a screen's own colour wins over its destination's.
+("color" also accepted.) Colour cascades screen -> destination ->
+route (programme) -> file default; a screen's own colour wins, then
+its destination's, then its route's, then the file default.
 
 Each image is a path, or {"image": path, "seconds": N,
 "fit": fit|fill|stretch, "colour": "#ffbb00"} to override the dwell /
@@ -85,7 +86,9 @@ def load_programs_file(path):
     if gFit not in FITS:
         sys.exit(f"program file {path}: image_fit must be "
                  f"one of {FITS}")
-    return data, progs, gRotate, gFit
+    gColour = parse_colour(data.get("colour", data.get("color")),
+                           "<file>", "default colour")
+    return data, progs, gRotate, gFit, gColour
 
 
 def parse_colour(v, prog_name, label):
@@ -132,7 +135,8 @@ def parse_screen(s, prog_name, label, pRotate, pFit, dColour):
             "seconds": sec, "fit": fit, "colour": colour}
 
 
-def resolve_program(data, progs, gRotate, gFit, name, dest_filter, path):
+def resolve_program(data, progs, gRotate, gFit, gColour, name,
+                    dest_filter, path):
     if name is None:
         if len(progs) == 1:
             name = next(iter(progs))
@@ -153,6 +157,8 @@ def resolve_program(data, progs, gRotate, gFit, name, dest_filter, path):
     pFit = raw.get("image_fit", gFit)
     if pFit not in FITS:
         sys.exit(f"program '{name}': image_fit must be one of {FITS}")
+    pColour = parse_colour(raw.get("colour", raw.get("color")),
+                           name, "route colour") or gColour
     dests_raw = raw.get("destinations", [])
     pairs = []  # (destination, colour, screen entry), file order
     if isinstance(dests_raw, dict):
@@ -167,6 +173,8 @@ def resolve_program(data, progs, gRotate, gFit, name, dest_filter, path):
                 lst = entry.get("images", entry.get("screens"))
             else:
                 lst = entry
+            if dcolour is None:
+                dcolour = pColour
             if not isinstance(lst, list) or not lst:
                 sys.exit(f"program '{name}' destination '{dname}': "
                          f"need a non-empty list of images")
@@ -185,7 +193,7 @@ def resolve_program(data, progs, gRotate, gFit, name, dest_filter, path):
         if not isinstance(screens, list) or not screens:
             sys.exit(f"program '{name}': need a non-empty 'screens' "
                      f"list of image paths, in play order")
-        pairs = [(None, None, s) for s in screens]
+        pairs = [(None, pColour, s) for s in screens]
     if dest_filter is not None:
         hit = next((d for d in dests
                     if d.lower() == dest_filter.lower()), None)
@@ -309,7 +317,8 @@ def main():
                    default=True)
     args = p.parse_args()
 
-    data, progs, gRotate, gFit = load_programs_file(args.program_file)
+    data, progs, gRotate, gFit, gColour = load_programs_file(
+        args.program_file)
 
     if args.list:
         for name in sorted(progs):
@@ -332,8 +341,9 @@ def main():
                   f"{n} screens")
         return
 
-    prog = resolve_program(data, progs, gRotate, gFit, args.program,
-                           args.destination, args.program_file)
+    prog = resolve_program(data, progs, gRotate, gFit, gColour,
+                           args.program, args.destination,
+                           args.program_file)
     if args.rotate_seconds is not None:
         if args.rotate_seconds <= 0:
             sys.exit("--rotate-seconds must be positive")
