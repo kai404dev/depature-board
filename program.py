@@ -22,11 +22,27 @@ programs.json:
     }
   }
 
+Colour override: any destination (or screen) takes "colour":
+"#ffbb00", multiply-tinted onto the image so black stays black and
+bright pixels take the colour:
+
+      "401": {
+        "route": "401",
+        "destinations": {
+          "Burton": {"colour": "#ffbb00",
+                     "images": ["bitmap/destinations/401/burton/401-burton-1.png",
+                                "bitmap/destinations/401/burton/401-burton-2.png"]}
+        }
+      }
+
+("color" also accepted.) Colour cascades screen -> destination;
+a screen's own colour wins over its destination's.
+
 Each image is a path, or {"image": path, "seconds": N,
-"fit": fit|fill|stretch} to override the dwell / fit for that
-screen. Without --destination every destination plays in file order;
-with it, only that destination's screens play. Defaults cascade:
-screen -> programme -> file -> built-in (10s, fit).
+"fit": fit|fill|stretch, "colour": "#ffbb00"} to override the dwell /
+fit / tint for that screen. Without --destination every destination
+plays in file order; with it, only that destination's screens play.
+Defaults cascade: screen -> programme -> file -> built-in (10s, fit).
 
   python3 program.py programs.json --program 401 --mock --once
   python3 program.py programs.json --program 401 --destination Burton --preview
@@ -43,7 +59,7 @@ import time
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, THIS_DIR)
 
-from images import load_frame
+from images import load_frame, tint_frame
 
 DEFAULT_ROTATE = 10
 DEFAULT_FIT = "fit"
@@ -72,7 +88,26 @@ def load_programs_file(path):
     return data, progs, gRotate, gFit
 
 
-def parse_screen(s, prog_name, label, pRotate, pFit):
+def parse_colour(v, prog_name, label):
+    if v is None:
+        return None
+    s = str(v).strip()
+    if s.startswith("#"):
+        s = s[1:]
+    if len(s) == 3:
+        s = "".join(c * 2 for c in s)
+    if len(s) != 6 or any(c not in "0123456789abcdefABCDEF"
+                           for c in s):
+        sys.exit(f"program '{prog_name}' {label}: colour must be "
+                 f"#rrggbb, got '{v}'")
+    return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+
+
+def colour_str(rgb):
+    return "#%02x%02x%02x" % rgb
+
+
+def parse_screen(s, prog_name, label, pRotate, pFit, dColour):
     if isinstance(s, str):
         s = {"image": s}
     if not isinstance(s, dict) or not str(s.get("image", "")).strip():
@@ -91,8 +126,10 @@ def parse_screen(s, prog_name, label, pRotate, pFit):
     if fit not in FITS:
         sys.exit(f"program '{prog_name}' {label}: fit must be one "
                  f"of {FITS}")
+    colour = parse_colour(s.get("colour", s.get("color")), prog_name,
+                           label) or dColour
     return {"image": str(s["image"]).strip(),
-            "seconds": sec, "fit": fit}
+            "seconds": sec, "fit": fit, "colour": colour}
 
 
 def resolve_program(data, progs, gRotate, gFit, name, dest_filter, path):
@@ -117,16 +154,24 @@ def resolve_program(data, progs, gRotate, gFit, name, dest_filter, path):
     if pFit not in FITS:
         sys.exit(f"program '{name}': image_fit must be one of {FITS}")
     dests_raw = raw.get("destinations", [])
-    pairs = []  # (destination or None, screen entry), file order
+    pairs = []  # (destination, colour, screen entry), file order
     if isinstance(dests_raw, dict):
         if not dests_raw:
             sys.exit(f"program '{name}': 'destinations' is empty")
-        for dname, lst in dests_raw.items():
+        for dname, entry in dests_raw.items():
+            dcolour = None
+            if isinstance(entry, dict):
+                dcolour = parse_colour(
+                    entry.get("colour", entry.get("color")), name,
+                    f"destination '{dname}'")
+                lst = entry.get("images", entry.get("screens"))
+            else:
+                lst = entry
             if not isinstance(lst, list) or not lst:
                 sys.exit(f"program '{name}' destination '{dname}': "
                          f"need a non-empty list of images")
             for s in lst:
-                pairs.append((str(dname), s))
+                pairs.append((str(dname), dcolour, s))
         dests = [str(d) for d in dests_raw]
     else:
         if isinstance(dests_raw, str):
@@ -140,7 +185,7 @@ def resolve_program(data, progs, gRotate, gFit, name, dest_filter, path):
         if not isinstance(screens, list) or not screens:
             sys.exit(f"program '{name}': need a non-empty 'screens' "
                      f"list of image paths, in play order")
-        pairs = [(None, s) for s in screens]
+        pairs = [(None, None, s) for s in screens]
     if dest_filter is not None:
         hit = next((d for d in dests
                     if d.lower() == dest_filter.lower()), None)
@@ -148,12 +193,12 @@ def resolve_program(data, progs, gRotate, gFit, name, dest_filter, path):
             sys.exit(f"program '{name}' has no destination "
                      f"'{dest_filter}' "
                      f"(have: {', '.join(dests)})")
-        pairs = [(d, s) for d, s in pairs if d == hit]
+        pairs = [(d, c, s) for d, c, s in pairs if d == hit]
         dests = [hit]
     out = []
-    for i, (d, s) in enumerate(pairs, 1):
+    for i, (d, c, s) in enumerate(pairs, 1):
         label = f"screen {i}" + (f" ({d})" if d else "")
-        entry = parse_screen(s, name, label, pRotate, pFit)
+        entry = parse_screen(s, name, label, pRotate, pFit, c)
         entry["destination"] = d
         out.append(entry)
     if not out:
@@ -188,8 +233,12 @@ def run_program(args, prog):
     frames = []
     for s in prog["screens"]:
         sw, sh, frame = load_frame(s["image"], W, H, s["fit"])
+        if s.get("colour"):
+            frame = tint_frame(frame, s["colour"])
         frames.append((s, frame))
         tag = f" [{s['destination']}]" if s.get("destination") else ""
+        if s.get("colour"):
+            tag += f" {colour_str(s['colour'])}"
         print(f"image {s['image']}: {sw}x{sh} -> {s['fit']} {W}x{H} "
               f"({s['seconds']}s){tag}", file=sys.stderr, flush=True)
     print(f"program '{prog['name']}' route {prog['route']} "
@@ -307,7 +356,10 @@ def main():
                 if last_dest:
                     print(f"  {last_dest}:")
             w, h = infos[s["image"]]
-            print(f"    [{s['seconds']:g}s] {s['image']} ({w}x{h})")
+            ctag = f" {colour_str(s['colour'])}" if s.get("colour") \
+                else ""
+            print(f"    [{s['seconds']:g}s] {s['image']} ({w}x{h})"
+                  f"{ctag}")
         return
 
     if args.preview:
@@ -325,7 +377,8 @@ def main():
             print(f"--- program '{prog['name']}' screen {i}/"
                   f"{len(prog['screens'])} ({W}x{H}) {s['image']} "
                   f"[{s['seconds']:g}s]"
-                  f"{' ' + s['destination'] if s.get('destination') else ''} ---")
+                  f"{' ' + s['destination'] if s.get('destination') else ''}"
+                  f"{' ' + colour_str(s['colour']) if s.get('colour') else ''} ---")
             lit = sum(1 for v in rec.paint.values() if v != (0, 0, 0))
             print(f"  {lit} lit pixels of {W * H}")
         return

@@ -226,6 +226,19 @@ def load_frame(path, W, H, mode):
     return sw, sh, scale_pixels(rgb, sw, sh, W, H, mode)
 
 
+def tint_frame(frame, colour):
+    """Multiply-tint an RGB frame: black stays black, bright pixels
+    take the colour (e.g. white text becomes amber with #ffbb00)."""
+    r, g, b = colour
+    out = bytearray(len(frame))
+    for i in range(len(frame) // 3):
+        o = i * 3
+        out[o] = (frame[o] * r + 127) // 255
+        out[o + 1] = (frame[o + 1] * g + 127) // 255
+        out[o + 2] = (frame[o + 2] * b + 127) // 255
+    return out
+
+
 def describe_images(paths):
     """Decode (no scaling) to report dimensions. Returns [(path, w, h)]."""
     out = []
