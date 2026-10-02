@@ -31,10 +31,10 @@
     },
     "igo": {
       "route": "igo",
-      "code": "446",
+      "code": "160",
       "destinations": {
-        "Derby":["bitmap/destinations/igo/Derby/igo-derby-1.png"],
-        "Nottingham":["bitmap/destinations/igo/Nottingham/igo-nottingham-1.png"]
+        "Derby":["bitmap/destinations/igo/Derby/igo-derby-1.png", "bitmap/destinations/igo/Shared/igo-indigo.png"],
+        "Nottingham":["bitmap/destinations/igo/Nottingham/igo-nottingham-1.png", "bitmap/destinations/igo/Shared/igo-indigo.png"]
       }
     }
   }
