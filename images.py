@@ -239,6 +239,19 @@ def tint_frame(frame, colour):
     return out
 
 
+def dim_frame(frame, pct):
+    """Scale an RGB frame to pct% brightness (100 = unchanged).
+
+    Dimming bright images cuts peak current draw, which is the most
+    common cause of flicker on big lit areas."""
+    if pct >= 100:
+        return frame
+    out = bytearray(len(frame))
+    for i in range(len(frame)):
+        out[i] = (frame[i] * pct) // 100
+    return out
+
+
 def describe_images(paths):
     """Decode (no scaling) to report dimensions. Returns [(path, w, h)]."""
     out = []

@@ -127,6 +127,19 @@ journalctl -u program.service -f   # expect: program '401' ... screens=N
 
 ## Troubleshooting
 
+- Flickering on bright / full-colour screens, brightest first:
+  1. Dim the images: `--image-dim 70` (peak current falls with
+     it — this is the most common fix).
+  2. Feed the panels properly: three chained panels at full white
+     pull several amps; a weak 5V supply sags and the whole board
+     shimmers. Use a supply rated for the panels, short thick
+     wires, and power the panels directly, not through the Pi.
+  3. Drop `--led-no-hardware-pulse` (and blacklist `snd_bcm2835`)
+     so the driver uses hardware pulse generation — software
+     pulsing flickers more, most visibly on bright colours.
+  4. Lower `--led-brightness` / `--led-pwm-bits` a notch.
+  Text blinds draw far less current, which is why they stay
+  steady while photos flicker.
 - Portal picks do nothing on the board: the matrix run must be
   live (`--portal`, plain run, or any run watching the file —
   `--mock`/`--preview` are one-shot and never follow). Check

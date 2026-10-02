@@ -434,6 +434,7 @@ def run_board(args, playlist):
                                    frame[o + 2])
                 o += 3
 
+    shown = None
     while True:
         now = time.time()
         cur = playlist[idx % len(playlist)]
@@ -446,14 +447,23 @@ def run_board(args, playlist):
             page_since = now
             cur = playlist[idx % len(playlist)]
 
-        scroll_need = 0.0
-        offscreen.Fill(0, 0, 0)
         if cur["type"] == "image":
-            blit(frames[cur["path"]])
+            # static pictures draw once; rewriting an identical
+            # buffer every cycle just burns CPU and can judder the
+            # refresh, which reads as flicker.
+            if shown != ("image", idx % len(playlist)):
+                scroll_need = 0.0
+                offscreen.Fill(0, 0, 0)
+                blit(frames[cur["path"]])
+                offscreen = matrix.SwapOnVSync(offscreen)
+                shown = ("image", idx % len(playlist))
         else:
+            shown = None
+            scroll_need = 0.0
+            offscreen.Fill(0, 0, 0)
             draw_blind(cur["svc"])
+            offscreen = matrix.SwapOnVSync(offscreen)
 
-        offscreen = matrix.SwapOnVSync(offscreen)
         if args.once:
             break
         time.sleep(0.08 if cur["type"] == "service" else 0.5)

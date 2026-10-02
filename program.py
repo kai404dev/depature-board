@@ -70,7 +70,7 @@ import time
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, THIS_DIR)
 
-from images import load_frame, tint_frame
+from images import dim_frame, load_frame, tint_frame
 
 DEFAULT_ROTATE = 10
 DEFAULT_FIT = "fit"
@@ -295,6 +295,7 @@ def run_program(args, prog, watch=None):
         sw, sh, frame = load_frame(s["image"], W, H, s["fit"])
         if isinstance(s.get("colour"), tuple):
             frame = tint_frame(frame, s["colour"])
+        frame = dim_frame(frame, args.image_dim)
         frames.append((s, frame))
         tag = f" [{s['destination']}]" if s.get("destination") else ""
         if s.get("colour"):
@@ -316,15 +317,21 @@ def run_program(args, prog, watch=None):
 
     idx = 0
     idx_since = time.time()
+    shown = None
     while True:
         now = time.time()
         if len(frames) > 1 and \
                 now - idx_since >= frames[idx % len(frames)][0]["seconds"]:
             idx = (idx + 1) % len(frames)
             idx_since = now
-        offscreen.Fill(0, 0, 0)
-        blit(frames[idx % len(frames)][1])
-        offscreen = matrix.SwapOnVSync(offscreen)
+        # static screens are drawn once: rewriting an identical
+        # buffer every cycle just burns CPU and can judder the
+        # refresh, which reads as flicker.
+        if shown != idx % len(frames):
+            offscreen.Fill(0, 0, 0)
+            blit(frames[idx % len(frames)][1])
+            offscreen = matrix.SwapOnVSync(offscreen)
+            shown = idx % len(frames)
         if args.once:
             break
         if watch is not None and watch():
@@ -411,6 +418,11 @@ def main():
                         "(default 10s from the programme)")
     p.add_argument("--image-fit", default=None, choices=FITS,
                    help="Fit override for every screen")
+    p.add_argument("--image-dim", type=int, default=100,
+                   help="Dim images to PCT%% brightness (default 100). "
+                        "Bright full-colour screens draw the most current, "
+                        "so dropping to e.g. 70 is the first fix if they "
+                        "flicker.")
     p.add_argument("--mock", action="store_true",
                    help="Print the programme instead of driving the matrix")
     p.add_argument("--once", action="store_true",
@@ -439,6 +451,9 @@ def main():
     p.add_argument("--led-no-hardware-pulse", action="store_true",
                    default=True)
     args = p.parse_args()
+
+    if not 1 <= args.image_dim <= 100:
+        sys.exit("--image-dim must be 1-100")
 
     data, progs, gRotate, gFit, gColour = load_programs_file(
         args.program_file)
