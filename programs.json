@@ -32,6 +32,7 @@
     "igo": {
       "route": "igo",
       "code": "160",
+      "colour": "full",
       "destinations": {
         "Derby":["bitmap/destinations/igo/Derby/igo-derby-1.png", "bitmap/destinations/igo/Shared/igo-indigo.png"],
         "Nottingham":["bitmap/destinations/igo/Nottingham/igo-nottingham-1.png", "bitmap/destinations/igo/Shared/igo-indigo.png"]
