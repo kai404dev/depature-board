@@ -37,6 +37,15 @@
         "Radcliffe":["bitmap/destinations/trent/mainline/ml-radcliffe.png", "bitmap/destinations/trent/mainline/ml-mainline.png"],
         "Nottingham":["bitmap/destinations/trent/mainline/ml-nottingham.png", "bitmap/destinations/trent/mainline/ml-mainline.png"]
       }
+    },
+    "zm": {
+      "route": "zm",
+      "code": "004",
+      "colour": "full",
+      "destinations": {
+        "Derby":["bitmap/destinations/trent/zoom/zm-derby.png", "bitmap/destinations/trent/zoom/zm-zoom.png"],
+        "Long Eaton":["bitmap/destinations/trent/zoom/zm-long-eaton.png", "bitmap/destinations/trent/zoom/zm-zoom.png"]
+      }
     }
   }
 }
