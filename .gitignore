@@ -6,3 +6,4 @@ rtt_token.txt
 darwin_token.txt
 darwin_kafka_state.json
 .DS_Store
+*~lock~
