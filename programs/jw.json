@@ -1,7 +1,7 @@
 {
   "rotate_seconds": 3,
   "image_fit": "fit",
-  "colour": "#ff8000",
+  "colour": "#DB9600",
   "programs": {
     "000": {
       "route": "000",
