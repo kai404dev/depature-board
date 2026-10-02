@@ -71,11 +71,9 @@
       "route": "C1",
       "code": "201",
       "destinations": {
-        "Connect": [
-          "bitmap/destinations/journeywise/Connect/C1/c1-connect.png"
-        ],
         "Swadlincote": [
-          "bitmap/destinations/journeywise/Connect/C1/c1-swadlincote.png"
+          "bitmap/destinations/journeywise/Connect/C1/c1-swadlincote.png",
+          "bitmap/destinations/journeywise/Connect/C1/c1-connect.png"
         ]
       }
     },
@@ -84,11 +82,9 @@
       "route": "C2",
       "code": "202",
       "destinations": {
-        "Connect": [
-          "bitmap/destinations/journeywise/Connect/C2/c2-connect.png"
-        ],
         "Swadlincote": [
-          "bitmap/destinations/journeywise/Connect/C2/c2-swadlincote .png"
+          "bitmap/destinations/journeywise/Connect/C2/c2-swadlincote .png",
+          "bitmap/destinations/journeywise/Connect/C2/c2-connect.png"
         ]
       }
     },
@@ -98,13 +94,12 @@
       "code": "203",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/Connect/C3/c2-burton .png"
-        ],
-        "Connect": [
+          "bitmap/destinations/journeywise/Connect/C3/c2-burton .png",
           "bitmap/destinations/journeywise/Connect/C3/c3-connect.png"
         ],
         "Swadlincote": [
-          "bitmap/destinations/journeywise/Connect/C3/c3-swadlincote .png"
+          "bitmap/destinations/journeywise/Connect/C3/c3-swadlincote .png",
+          "bitmap/destinations/journeywise/Connect/C3/c3-connect.png"
         ]
       }
     },
@@ -114,13 +109,12 @@
       "code": "204",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/Connect/C4/c4-burton.png"
-        ],
-        "Connect": [
+          "bitmap/destinations/journeywise/Connect/C4/c4-burton.png",
           "bitmap/destinations/journeywise/Connect/C4/c4-connect.png"
         ],
         "Swadlincote": [
-          "bitmap/destinations/journeywise/Connect/C4/c4-swadlincote .png"
+          "bitmap/destinations/journeywise/Connect/C4/c4-swadlincote .png",
+          "bitmap/destinations/journeywise/Connect/C4/c4-connect.png"
         ]
       }
     },
@@ -129,14 +123,13 @@
       "route": "C5",
       "code": "205",
       "destinations": {
-        "Connect": [
+        "Mercia Park": [
+          "bitmap/destinations/journeywise/Connect/C5/c5-mercia-park.png",
           "bitmap/destinations/journeywise/Connect/C5/c5-connect.png"
         ],
-        "Mercia Park": [
-          "bitmap/destinations/journeywise/Connect/C5/c5-mercia-park.png"
-        ],
         "Swadlincote": [
-          "bitmap/destinations/journeywise/Connect/C5/c5-swadlincote.png"
+          "bitmap/destinations/journeywise/Connect/C5/c5-swadlincote.png",
+          "bitmap/destinations/journeywise/Connect/C5/c5-connect.png"
         ]
       }
     },
@@ -146,12 +139,11 @@
       "code": "206",
       "destinations": {
         "Acorn": [
-          "bitmap/destinations/journeywise/Connect/C6/c6-acorn.png"
+          "bitmap/destinations/journeywise/Connect/C6/c6-acorn.png",
+          "bitmap/destinations/journeywise/Connect/C6/c6-connect.png"
         ],
         "Burton": [
-          "bitmap/destinations/journeywise/Connect/C6/c6-burton.png"
-        ],
-        "Connect": [
+          "bitmap/destinations/journeywise/Connect/C6/c6-burton.png",
           "bitmap/destinations/journeywise/Connect/C6/c6-connect.png"
         ]
       }
