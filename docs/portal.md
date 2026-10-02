@@ -30,8 +30,9 @@ It mirrors the ICU 602 handset in the cab:
   ✓ jumps the board straight there. Digits do nothing here.
 - **Keypad** takes full route+dest codes in one go (see below).
 - **X** clears the buffer. **✓** confirms. **Home** resets.
-- **Chips** under the unit list every destination with its id;
-  green is showing, outlined is the F2 highlight.
+- **Chips** under the unit show each destination's first image
+  (green = showing, outlined = F2/F5 highlight); clicking one
+  selects it straight away.
 - A PC keyboard works too: `0-9`, arrows, `Enter`, `Backspace`.
 
 ## Route + destination codes

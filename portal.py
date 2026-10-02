@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import program as model
@@ -233,6 +234,29 @@ class Controller:
                 self._arrow(k)
             elif k == "ok":
                 self._confirm()
+            elif k.startswith("pickall:"):
+                try:
+                    i = int(k[len("pickall:"):])
+                except ValueError:
+                    i = None
+                flat = self._flat()
+                if i is None or not 0 <= i < len(flat):
+                    self.message = "Nothing to pick"
+                else:
+                    name, dest, _ = flat[i]
+                    self._apply_program(name)
+                    self.dest_name = dest
+                    self.hi = self._dest_index()
+                    self.message = ""
+                self.buffer = ""
+            elif k.startswith("pick:"):
+                hit = self._match_dest(k[len("pick:"):])
+                if hit is None:
+                    self.message = "Nothing to pick"
+                else:
+                    self.dest_name = hit
+                    self.message = ""
+                self.buffer = ""
             else:
                 self.message = f"Unknown key {k}"
             if (self.program_name, self.dest_name) != sel0:
@@ -275,6 +299,11 @@ class Controller:
         with self.lock:
             return (self.program_name, self.dest_name)
 
+    def known_images(self):
+        with self.lock:
+            self._refresh_locked()
+            return self._known_images()
+
     def _clamp(self, program, dest):
         if program not in self.data[1]:
             program = next(iter(self.data[1]))
@@ -290,6 +319,37 @@ class Controller:
         if not isinstance(raw, dict):
             return []
         return model.destination_ids(raw, program)
+
+    def _first_image(self, program, dest):
+        raw = self.data[1].get(program)
+        if not isinstance(raw, dict):
+            return None
+        dests = raw.get("destinations", {})
+        if isinstance(dests, dict):
+            v = dests.get(dest)
+            if isinstance(v, dict):
+                v = v.get("images", v.get("screens", []))
+            if isinstance(v, list) and v:
+                s = v[0]
+                return str(s.get("image") if isinstance(s, dict)
+                           else s) or None
+            return None
+        for s in (raw.get("screens") or []):
+            p = s.get("image") if isinstance(s, dict) else s
+            if p:
+                return str(p)
+        return None
+
+    def _known_images(self):
+        imgs = set()
+        for name, raw in self.data[1].items():
+            if not isinstance(raw, dict):
+                continue
+            for d, _ in self._ids_for(name):
+                p = self._first_image(name, d)
+                if p:
+                    imgs.add(p)
+        return imgs
 
     def _flat(self):
         """Every (program, destination, id) in file order."""
@@ -447,9 +507,14 @@ class Controller:
             "message": self.message,
             "routes": [{"program": n, "route": r or n, "code": c}
                        for n, r, c in self._routes()],
-            "destinations": [{"name": d, "id": di} for d, di in ids],
+            "destinations": [{"name": d, "id": di,
+                              "img": self._first_image(
+                                  self.program_name, d)}
+                             for d, di in ids],
             "all": [{"program": p, "route": self._route_of(p),
-                     "name": d, "id": di} for p, d, di in flat],
+                     "name": d, "id": di,
+                     "img": self._first_image(p, d)}
+                    for p, d, di in flat],
         }
 
 
@@ -536,9 +601,13 @@ box-shadow:0 3px 0 #000,inset 0 1px 0 rgba(255,255,255,.12)}
 /* below the unit: functional extras, kept quiet */
 .dests{display:flex;flex-wrap:wrap;gap:8px;max-width:100%;justify-content:center}
 .dests span{background:#26262c;border:1px solid #3a3a42;border-radius:6px;
-padding:6px 11px;font-size:14px;color:#cfcfd6}
+padding:6px 11px;font-size:14px;color:#cfcfd6;cursor:pointer}
 .dests span.cur{background:#1d5c2e;border-color:#1d5c2e;color:#fff}
 .dests span.hi{outline:2px solid #ffd27f}
+.dests img{width:132px;height:22px;object-fit:contain;background:#000;
+border-radius:4px;border:1px solid #3a3a42;cursor:pointer}
+.dests img.cur{outline:2px solid #37e05a}
+.dests img.hi{outline:2px solid #ffd27f}
 .hint{color:#777;font-size:12px;text-align:center}
 button{font-family:inherit}
 @media (max-width:720px){
@@ -605,6 +674,7 @@ F5 all destinations on arrows &middot;
 keypad takes route+dest codes, e.g. 40101 &middot; keyboard: 0-9,
 arrows, Enter, Backspace</div>
 <script>
+var lastChips='';
 function update(s){
 document.getElementById('big').textContent=s.big;
 document.getElementById('line').textContent='Line: '+(s.route||'-');
@@ -614,21 +684,33 @@ document.getElementById('msg').textContent=s.message||'';
 document.getElementById('f1').className='fn'+(s.field=='line'?' active':'');
 document.getElementById('f2').className='fn'+(s.field=='dest'?' active':'');
 document.getElementById('f5').className='fn'+(s.field=='all'?' active':'');
+var list=s.field=='all'?s.all:s.destinations;
+var key=s.field+'|'+s.program+'|'+(s.dest||'')+'|'+
+(s.field=='all'?s.hi_all:s.hi)+'|'+list.map(function(d){
+return d.name+':'+d.id+':'+(d.img||'');}).join(',');
+if(key==lastChips)return;
+lastChips=key;
 var box=document.getElementById('dests');box.innerHTML='';
-if(s.field=='all'){
-s.all.forEach(function(d,i){
-var el=document.createElement('span');
-el.textContent=d.route+' '+d.name;
-if(d.program==s.program&&d.name==s.dest)el.className='cur';
-else if(i==s.hi_all)el.className='hi';
-box.appendChild(el);});
+list.forEach(function(d,i){
+var isCur=s.field=='all'?(d.program==s.program&&d.name==s.dest):
+(d.name==s.dest);
+var isHi=!isCur&&(s.field=='all'?(i==s.hi_all):
+(s.field=='dest'&&i==s.hi));
+var cls=isCur?'cur':(isHi?'hi':'');
+var go=(function(dd,ii){return function(){
+if(s.field=='all')press('pickall:'+ii);else press('pick:'+dd.name);};})(d,i);
+var el;
+if(d.img){
+el=document.createElement('img');
+el.src='/api/img?path='+encodeURIComponent(d.img);
+el.title=(s.field=='all'?d.route+' ':'')+d.name;
+el.onclick=go;
 }else{
-s.destinations.forEach(function(d,i){
-var el=document.createElement('span');el.textContent=d.id+' '+d.name;
-if(d.name==s.dest)el.className='cur';
-else if(s.field=='dest'&&i==s.hi)el.className='hi';
-box.appendChild(el);});
+el=document.createElement('span');el.textContent=d.id+' '+d.name;
+el.onclick=go;
 }
+if(cls)el.className=cls;
+box.appendChild(el);});
 }
 async function press(k){
 var r=await fetch('/api/key',{method:'POST',
@@ -672,6 +754,18 @@ def serve(ctl, port):
             elif self.path == "/api/state":
                 self._send(json.dumps(
                     outer.snapshot()).encode(), "application/json")
+            elif self.path.startswith("/api/img?"):
+                q = urllib.parse.parse_qs(
+                    urllib.parse.urlsplit(self.path).query)
+                p = (q.get("path") or [""])[0]
+                if p in outer.known_images():
+                    try:
+                        with open(p, "rb") as f:
+                            self._send(f.read(), "image/png")
+                            return
+                    except OSError:
+                        pass
+                self._send(b"not found", "text/plain", 404)
             else:
                 self._send(b"not found", "text/plain", 404)
 
