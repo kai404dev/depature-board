@@ -25,6 +25,9 @@ It mirrors the ICU 602 handset in the cab:
 - **F1** enters the route number. Type digits, ✓ to confirm.
 - **F2** picks the destination: ↑/↓ (or ←/→) steps through the
   destinations in file order, or type the numeric id. ✓ confirms.
+- **F5** browses every destination in the file on the arrows
+  (the LCD previews each one, the chips show `route name`);
+  ✓ jumps the board straight there. Digits do nothing here.
 - **Keypad** takes full route+dest codes in one go (see below).
 - **X** clears the buffer. **✓** confirms. **Home** resets.
 - **Chips** under the unit list every destination with its id;

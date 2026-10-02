@@ -109,6 +109,7 @@ class Controller:
         self.field = "line"
         self.buffer = ""
         self.hi = self._dest_index()
+        self.hi_all = self._flat_index()
         if self.message == "":
             self.message = "F1 line, F2 destination"
 
@@ -209,13 +210,19 @@ class Controller:
                 self.buffer = ""
                 self.hi = self._dest_index()
                 self.message = "Select destination"
-            elif k in ("F3", "F4", "F5"):
+            elif k in ("F3", "F4"):
                 self.message = f"{k} not used"
+            elif k == "F5":
+                self.field = "all"
+                self.buffer = ""
+                self.hi_all = self._flat_index()
+                self.message = "All destinations - arrows, tick to select"
             elif k in ("home", "clearall"):
                 self.program_name, self.dest_name = self._clamp(
                     *self.initial)
                 self.field, self.buffer = "line", ""
                 self.hi = self._dest_index()
+                self.hi_all = self._flat_index()
                 self.message = "Cleared"
             elif k == "clear":
                 self.buffer = ""
@@ -284,7 +291,27 @@ class Controller:
             return []
         return model.destination_ids(raw, program)
 
+    def _flat(self):
+        """Every (program, destination, id) in file order."""
+        out = []
+        for name in self.data[1]:
+            for d, di in self._ids_for(name):
+                out.append((name, d, di))
+        return out
+
+    def _flat_index(self):
+        for i, (p, d, _) in enumerate(self._flat()):
+            if p == self.program_name and d == self.dest_name:
+                return i
+        for i, (p, d, _) in enumerate(self._flat()):
+            if p == self.program_name:
+                return i
+        return 0
+
     def _digit(self, k):
+        if self.field == "all":
+            self.message = "Arrows to browse, tick to select"
+            return
         if len(self.buffer) >= 8:
             self.message = "Buffer full - X to clear"
             return
@@ -301,6 +328,16 @@ class Controller:
                     break
 
     def _arrow(self, k):
+        step = 1 if k in ("down", "right") else -1
+        if self.field == "all":
+            flat = self._flat()
+            if not flat:
+                self.message = "No destinations"
+                return
+            self.hi_all = (self.hi_all + step) % len(flat)
+            self.buffer = ""
+            self.message = ""
+            return
         if self.field != "dest":
             self.message = "F2 for destination"
             return
@@ -308,12 +345,23 @@ class Controller:
         if not ids:
             self.message = "No destinations"
             return
-        step = 1 if k in ("down", "right") else -1
         self.hi = (self.hi + step) % len(ids)
         self.buffer = ""
         self.message = ""
 
     def _confirm(self):
+        if self.field == "all":
+            flat = self._flat()
+            if not flat:
+                self.message = "No destinations"
+                return
+            name, dest, _ = flat[self.hi_all % len(flat)]
+            self._apply_program(name)
+            self.dest_name = dest
+            self.hi = self._dest_index()
+            self.message = ""
+            self.buffer = ""
+            return
         if self.field == "line":
             buf = self.buffer.strip()
             if not buf:
@@ -376,8 +424,12 @@ class Controller:
         ids = self._ids()
         cur_id = next((di for d, di in ids if d == self.dest_name),
                       None)
+        flat = self._flat()
         if self.buffer:
             big = self.buffer
+        elif self.field == "all" and flat:
+            p, d, _ = flat[self.hi_all % len(flat)]
+            big = f"{self._route_of(p)} {d}"
         elif self.dest_name:
             big = f"{route} {self.dest_name}"
         else:
@@ -391,10 +443,13 @@ class Controller:
             "field": self.field,
             "buffer": self.buffer,
             "hi": self.hi,
+            "hi_all": self.hi_all,
             "message": self.message,
             "routes": [{"program": n, "route": r or n, "code": c}
                        for n, r, c in self._routes()],
             "destinations": [{"name": d, "id": di} for d, di in ids],
+            "all": [{"program": p, "route": self._route_of(p),
+                     "name": d, "id": di} for p, d, di in flat],
         }
 
 
@@ -518,7 +573,7 @@ button{font-family:inherit}
 <button class="fn" id="f2" onclick="press('F2')">F2</button>
 <button class="fn" onclick="press('F3')">F3</button>
 <button class="fn" onclick="press('F4')">F4</button>
-<button class="fn" onclick="press('F5')">F5</button>
+<button class="fn" id="f5" onclick="press('F5')">F5</button>
 <span class="dot"></span>
 </div>
 </div>
@@ -546,6 +601,7 @@ button{font-family:inherit}
 </div></div></div>
 <div class="dests" id="dests"></div>
 <div class="hint">F1 route &middot; F2 destination (arrows or id) &middot;
+F5 all destinations on arrows &middot;
 keypad takes route+dest codes, e.g. 40101 &middot; keyboard: 0-9,
 arrows, Enter, Backspace</div>
 <script>
@@ -555,14 +611,24 @@ document.getElementById('line').textContent='Line: '+(s.route||'-');
 document.getElementById('dest').textContent='Dest: '+
 (s.dest_id===null||s.dest_id===undefined?'-':s.dest_id);
 document.getElementById('msg').textContent=s.message||'';
-document.getElementById('f1').className=s.field=='line'?'active':'';
-document.getElementById('f2').className=s.field=='dest'?'active':'';
+document.getElementById('f1').className='fn'+(s.field=='line'?' active':'');
+document.getElementById('f2').className='fn'+(s.field=='dest'?' active':'');
+document.getElementById('f5').className='fn'+(s.field=='all'?' active':'');
 var box=document.getElementById('dests');box.innerHTML='';
+if(s.field=='all'){
+s.all.forEach(function(d,i){
+var el=document.createElement('span');
+el.textContent=d.route+' '+d.name;
+if(d.program==s.program&&d.name==s.dest)el.className='cur';
+else if(i==s.hi_all)el.className='hi';
+box.appendChild(el);});
+}else{
 s.destinations.forEach(function(d,i){
 var el=document.createElement('span');el.textContent=d.id+' '+d.name;
 if(d.name==s.dest)el.className='cur';
 else if(s.field=='dest'&&i==s.hi)el.className='hi';
 box.appendChild(el);});
+}
 }
 async function press(k){
 var r=await fetch('/api/key',{method:'POST',
