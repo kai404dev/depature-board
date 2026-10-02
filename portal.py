@@ -403,65 +403,127 @@ PAGE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ICU 602</title>
 <style>
-body{background:#222;margin:0;padding:16px;font-family:Arial,sans-serif;
-color:#eee;display:flex;flex-direction:column;align-items:center;gap:12px}
-.unit{background:linear-gradient(#2b3a58,#131a2e);border-radius:28px;
-padding:22px 26px;width:760px;max-width:96vw;box-shadow:0 8px 30px #000}
-.brand{color:#8fa3c7;font-size:13px;letter-spacing:1px}
-.lcd{background:#d7e7f1;border-radius:6px;color:#1c3550;
-padding:12px 16px;box-shadow:inset 0 2px 8px rgba(0,0,0,.35);
-display:grid;grid-template-columns:1fr 150px;gap:8px;min-height:120px}
-.big{font-family:"Courier New",monospace;font-weight:bold;
-font-size:44px;overflow:hidden;white-space:nowrap}
-.meta{font-size:17px;line-height:1.5;text-align:right}
-.soft{display:flex;justify-content:space-between;margin-top:6px}
-.soft button{background:#23405c;color:#fff;border:0;border-radius:4px;
-padding:5px 14px;font-size:14px;cursor:pointer}
-.msg{min-height:20px;font-size:14px;color:#ffd27f;margin-top:6px}
-.fnrow{display:flex;gap:14px;margin:16px 0 4px;align-items:center}
-.fnrow button{background:#0a0a0a;color:#ff8c1a;border:1px solid #444;
-border-radius:8px;padding:8px 0;width:64px;font-size:16px;font-weight:bold;
-cursor:pointer}
-.fnrow button.active{outline:2px solid #ffd27f}
-.home{background:#0a0a0a;color:#ff8c1a !important}
-.pad{display:flex;gap:26px;margin-top:14px;align-items:flex-start}
-.digits{display:grid;grid-template-columns:repeat(3,64px);gap:10px}
-.digits button{background:#101010;color:#fff;border:1px solid #333;
-border-radius:10px;padding:10px 0 6px;font-size:20px;cursor:pointer}
-.digits button small{display:block;color:#999;font-size:10px}
-.digits button:active{background:#333}
-.nav{display:grid;grid-template-columns:repeat(3,54px);gap:8px;
-align-content:start}
-.nav button{background:#101010;color:#fff;border:1px solid #333;
-border-radius:50%;width:54px;height:54px;font-size:18px;cursor:pointer}
-.nav button.ok{color:#37e05a;border-radius:10px}
-.nav button.no{color:#ff4444;border-radius:10px}
-.dests{display:flex;flex-wrap:wrap;gap:8px;max-width:760px}
-.dests span{background:#333;border-radius:6px;padding:6px 10px;font-size:14px}
-.dests span.cur{background:#1d5c2e}
+*{box-sizing:border-box}
+::selection{background:#ff8c1a;color:#000}
+body{background:radial-gradient(1100px 480px at 50% -40px,#1c1c1e,#060607 65%);
+margin:0;padding:30px 14px 46px;font-family:Arial,Helvetica,sans-serif;color:#eee;
+display:flex;flex-direction:column;align-items:center;gap:14px;min-height:100vh}
+body::-webkit-scrollbar{width:10px}
+body::-webkit-scrollbar-thumb{background:#333;border-radius:5px}
+/* ---- unit ---- */
+.unit{width:820px;max-width:98vw;border-radius:44px;padding:13px;
+background:linear-gradient(#3a3f45,#0b0c0e 40%,#000);
+box-shadow:0 34px 70px rgba(0,0,0,.85),0 6px 16px rgba(0,0,0,.9)}
+.face{position:relative;border-radius:32px;padding:26px 30px 26px;
+background:linear-gradient(#27325c 0%,#1d2547 14%,#151b3a 62%,#10152c 100%);
+box-shadow:inset 0 2px 2px rgba(255,255,255,.25),inset 0 -4px 10px rgba(0,0,0,.65)}
+.main{display:grid;grid-template-columns:66px 1fr 216px;gap:20px}
+/* left rail */
+.rail{border-right:2px solid rgba(0,0,0,.6);padding:8px 12px 8px 0;
+display:flex;flex-direction:column;align-items:center;gap:26px;color:#97a0b8}
+.rail .who{font-size:14px;text-align:center;line-height:1.3}
+.rail .who b{display:block;font-size:16px;color:#c6cede;letter-spacing:.5px}
+/* LCD */
+.lcdwrap{background:#070a12;border-radius:10px;padding:11px;
+box-shadow:inset 0 4px 12px rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.09)}
+.lcd{background:linear-gradient(#d3e6f3,#b9d1e2 72%,#adc4d7);border-radius:3px;
+color:#20344d;padding:14px 18px 10px;min-height:158px;
+box-shadow:inset 0 0 26px rgba(70,110,140,.4);
+display:grid;grid-template-columns:1fr 148px;gap:10px}
+.big{font-family:"Courier New",Courier,monospace;font-weight:bold;font-size:40px;
+letter-spacing:1px;white-space:nowrap;overflow:hidden;
+text-shadow:0 1px 0 rgba(255,255,255,.35)}
+.big span{border:2px solid #22374e;padding:1px 12px;display:inline-block}
+.meta{font-family:"Courier New",Courier,monospace;font-size:18px;line-height:1.6}
+.soft{display:flex;justify-content:space-between;margin-top:10px;grid-column:1/-1}
+.soft button{background:#1d3a4c;color:#fff;border:0;border-radius:3px;
+padding:6px 20px;font-size:15px;cursor:pointer;
+box-shadow:0 2px 0 rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.15)}
+.soft button:active{transform:translateY(1px)}
+.msg{min-height:22px;font-size:14px;color:#ffd27f;margin-top:8px}
+.msg:empty:before{content:" "}
+/* function keys */
+.fnrow{display:flex;gap:15px;margin:16px 0 0;align-items:center}
+.fn{background:linear-gradient(#1c1c22,#070708);color:#ff8c1a;
+border:1px solid #33333c;border-top-color:#55555f;border-radius:9px;width:66px;
+padding:9px 0;font-size:17px;font-weight:bold;cursor:pointer;
+box-shadow:0 3px 0 #000,inset 0 1px 0 rgba(255,255,255,.14)}
+.fn:hover{filter:brightness(1.25)}
+.fn:active{transform:translateY(2px);box-shadow:0 1px 0 #000}
+.fn.active{outline:2px solid #ffd27f;outline-offset:1px}
+.fn:focus-visible{outline:2px solid #ffd27f;outline-offset:2px}
+.dot{width:22px;height:22px;border-radius:50%;margin-left:auto;
+background:radial-gradient(circle at 35% 30%,#3d3d49,#0e0e12 70%);
+box-shadow:inset 0 2px 4px #000,0 1px 0 rgba(255,255,255,.1)}
+/* keypad + nav */
+.side{display:flex;flex-direction:column;gap:16px}
+.keys{display:grid;grid-template-columns:repeat(3,62px);gap:10px;justify-content:start}
+.keys button{background:linear-gradient(#1b1b21,#0a0a0d);color:#fff;
+border:1px solid #34343e;border-top-color:#55555f;border-radius:10px;
+padding:9px 0 5px;font-size:21px;font-weight:bold;cursor:pointer;
+box-shadow:0 3px 0 #000,inset 0 1px 0 rgba(255,255,255,.12);line-height:1.05}
+.keys button small{display:block;color:#9a9aa2;font-size:10px;font-weight:normal}
+.keys button:hover{filter:brightness(1.3)}
+.keys button:active{transform:translateY(2px);box-shadow:0 1px 0 #000}
+.keys button:focus-visible{outline:2px solid #ffd27f;outline-offset:2px}
+.keys .blank{background:none;border:0;box-shadow:none;cursor:default}
+.nav{display:grid;grid-template-columns:repeat(3,56px);gap:9px;align-content:start}
+.nav button{background:linear-gradient(#1b1b21,#0a0a0d);color:#fff;
+border:1px solid #34343e;border-top-color:#55555f;border-radius:50%;
+width:56px;height:56px;font-size:19px;cursor:pointer;
+box-shadow:0 3px 0 #000,inset 0 1px 0 rgba(255,255,255,.12)}
+.nav button:hover{filter:brightness(1.3)}
+.nav button:active{transform:translateY(2px);box-shadow:0 1px 0 #000}
+.nav button:focus-visible{outline:2px solid #ffd27f;outline-offset:2px}
+.nav button.ok{color:#37e05a;border-radius:12px}
+.nav button.no{color:#ff4444;border-radius:12px}
+.nav .blank{background:none;border:0;box-shadow:none;cursor:default}
+/* below the unit: functional extras, kept quiet */
+.dests{display:flex;flex-wrap:wrap;gap:8px;max-width:820px;justify-content:center}
+.dests span{background:#26262c;border:1px solid #3a3a42;border-radius:6px;
+padding:6px 11px;font-size:14px;color:#cfcfd6}
+.dests span.cur{background:#1d5c2e;border-color:#1d5c2e;color:#fff}
 .dests span.hi{outline:2px solid #ffd27f}
-.hint{color:#888;font-size:12px}
+.hint{color:#777;font-size:12px;text-align:center}
+button{font-family:inherit}
+@media (max-width:720px){
+.main{grid-template-columns:52px 1fr}
+.side{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}
+.big{font-size:28px}
+.fn{width:54px;font-size:15px}
+}
 </style></head><body>
-<div class="unit">
-<div class="brand">mobitec&nbsp;&nbsp;ICU 602</div>
-<div class="lcd">
-<div><div class="big" id="big">---</div>
+<div class="unit"><div class="face"><div class="main">
+<div class="rail">
+<div class="who">mobitec<b>ICU 602</b></div>
+<svg width="30" height="60" viewBox="0 0 30 60" fill="none" stroke="#7d86a0" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
+<path d="M15 6v40"/><path d="M9 12l6-6 6 6"/>
+<path d="M15 30L6 40"/><path d="M15 30l9 10"/>
+<circle cx="6" cy="43" r="3.4" fill="#7d86a0" stroke="none"/>
+<rect x="21" y="40" width="7" height="7" fill="#7d86a0" stroke="none"/>
+</svg>
+</div>
+<div class="mid">
+<div class="lcdwrap"><div class="lcd">
+<div><div class="big"><span id="big">---</span></div>
 <div class="soft"><button onclick="press('dest')">Dest</button>
 <button onclick="press('clearall')">Clear all</button></div></div>
 <div class="meta"><div id="line">Line: -</div><div id="dest">Dest: -</div>
 <div>Extr:</div></div>
-</div>
+</div></div>
 <div class="msg" id="msg"></div>
 <div class="fnrow">
-<button class="home" onclick="press('home')">&#8962;</button>
-<button id="f1" onclick="press('F1')">F1</button>
-<button id="f2" onclick="press('F2')">F2</button>
-<button onclick="press('F3')">F3</button>
-<button onclick="press('F4')">F4</button>
-<button onclick="press('F5')">F5</button>
+<button class="fn home" onclick="press('home')">&#8962;</button>
+<button class="fn" id="f1" onclick="press('F1')">F1</button>
+<button class="fn" id="f2" onclick="press('F2')">F2</button>
+<button class="fn" onclick="press('F3')">F3</button>
+<button class="fn" onclick="press('F4')">F4</button>
+<button class="fn" onclick="press('F5')">F5</button>
+<span class="dot"></span>
 </div>
-<div class="pad">
-<div class="digits">
+</div>
+<div class="side">
+<div class="keys">
 <button onclick="press('1')">1</button>
 <button onclick="press('2')">2<small>ABC</small></button>
 <button onclick="press('3')">3<small>DEF</small></button>
@@ -471,21 +533,17 @@ border-radius:50%;width:54px;height:54px;font-size:18px;cursor:pointer}
 <button onclick="press('7')">7<small>PQRS</small></button>
 <button onclick="press('8')">8<small>TUV</small></button>
 <button onclick="press('9')">9<small>WXYZ</small></button>
-<button></button>
+<span class="blank"></span>
 <button onclick="press('0')">0<small>_</small></button>
-<button></button>
+<span class="blank"></span>
 </div>
 <div class="nav">
-<button></button><button onclick="press('up')">&#8593;</button><button></button>
-<button onclick="press('left')">&#8592;</button>
-<button onclick="press('down')">&#8595;</button>
-<button onclick="press('right')">&#8594;</button>
-<button class="no" onclick="press('clear')">X</button>
-<button></button>
-<button class="ok" onclick="press('ok')">&#1003;</button>
+<span class="blank"></span><button onclick="press('up')">&#8593;</button><button class="no" onclick="press('clear')">X</button>
+<button onclick="press('left')">&#8592;</button><span class="blank"></span><button onclick="press('right')">&#8594;</button>
+<span class="blank"></span><button onclick="press('down')">&#8595;</button><button class="ok" onclick="press('ok')">&#1003;</button>
 </div>
 </div>
-</div>
+</div></div></div>
 <div class="dests" id="dests"></div>
 <div class="hint">F1 route &middot; F2 destination (arrows or id) &middot;
 keypad takes route+dest codes, e.g. 40101 &middot; keyboard: 0-9,
