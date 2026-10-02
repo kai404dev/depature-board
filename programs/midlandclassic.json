@@ -1,0 +1,66 @@
+{
+  "rotate_seconds": 5,
+  "image_fit": "fit",
+  "colour": "#ff8000",
+  "programs": {
+    "1": {
+      "route": "1",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/1/1-burton.png"
+        ],
+        "Tutbury": [
+          "bitmap/destinations/midlandclassic/1/1-tutbury.png"
+        ]
+      }
+    },
+    "2": {
+      "route": "2",
+      "destinations": {
+        "Horninglow": [
+          "bitmap/destinations/midlandclassic/2/2-horninglow.png"
+        ],
+        "Stapenhill": [
+          "bitmap/destinations/midlandclassic/2/2-stapenhill.png"
+        ],
+        "Burton": [
+          "bitmap/destinations/midlandclassic/2/2-burton-then-horninglow.png"
+        ]
+      }
+    },
+    "3": {
+      "route": "3",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/3/3-burton.png"
+        ],
+        "Hospital": [
+          "bitmap/destinations/midlandclassic/3/3-hospital.png"
+        ],
+        "Winshill": [
+          "bitmap/destinations/midlandclassic/3/3-winshill.png"
+        ]
+      }
+    },
+    "4": {
+      "route": "4",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/4/4-burton.png"
+        ],
+        "Swadlincote": [
+          "bitmap/destinations/midlandclassic/4/4-swadlincote.png"
+        ]
+      }
+    },
+    "000": {
+      "route": "000",
+      "code": "0",
+      "destinations": {
+        "Not in Service": [
+          "bitmap/destinations/midlandclassic/other/mdcl.png"
+        ]
+      }
+    }
+  }
+}

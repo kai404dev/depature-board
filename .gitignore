@@ -8,3 +8,4 @@ darwin_kafka_state.json
 program_control.json
 .DS_Store
 *~lock~
+.venv/

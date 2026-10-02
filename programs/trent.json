@@ -7,17 +7,12 @@
       "route": "000",
       "code": "0",
       "destinations": {
-        "nis":["bitmap/destinations/000/not-in-service.png"],
-        "learner":["bitmap/destinations/000/learner.png"]
-      }
-    },
-    "igo": {
-      "route": "igo",
-      "code": "001",
-      "colour": "full",
-      "destinations": {
-        "Derby":["bitmap/destinations/trent/igo/igo-derby.png", "bitmap/destinations/trent/igo/igo-indigo.png"],
-        "Nottingham":["bitmap/destinations/trent/igo/igo-nottingham.png", "bitmap/destinations/trent/igo/igo-indigo.png"]
+        "nis": [
+          "bitmap/destinations/000/not-in-service.png"
+        ],
+        "learner": [
+          "bitmap/destinations/000/learner.png"
+        ]
       }
     },
     "i4": {
@@ -25,26 +20,57 @@
       "code": "002",
       "colour": "full",
       "destinations": {
-        "Derby":["bitmap/destinations/trent/i4/i4-derby.png"],
-        "Nottingham":["bitmap/destinations/trent/i4/i4-nottingham.png"]
+        "Derby": [
+          "bitmap/destinations/trent/i4/i4-derby.png"
+        ],
+        "Nottingham": [
+          "bitmap/destinations/trent/i4/i4-nottingham.png"
+        ]
       }
     },
-    "ml": {
-      "route": "ml",
-      "code": "003",
+    "indgo": {
+      "route": "igo",
+      "code": "001",
       "colour": "full",
       "destinations": {
-        "Radcliffe":["bitmap/destinations/trent/mainline/ml-radcliffe.png", "bitmap/destinations/trent/mainline/ml-mainline.png"],
-        "Nottingham":["bitmap/destinations/trent/mainline/ml-nottingham.png", "bitmap/destinations/trent/mainline/ml-mainline.png"]
+        "Derby": [
+          "bitmap/destinations/trent/igo/igo-derby.png",
+          "bitmap/destinations/trent/igo/igo-indigo.png"
+        ],
+        "Nottingham": [
+          "bitmap/destinations/trent/igo/igo-nottingham.png",
+          "bitmap/destinations/trent/igo/igo-indigo.png"
+        ]
       }
     },
-    "zm": {
+    "zoom": {
       "route": "zm",
       "code": "004",
       "colour": "full",
       "destinations": {
-        "Derby":["bitmap/destinations/trent/zoom/zm-derby.png", "bitmap/destinations/trent/zoom/zm-zoom.png"],
-        "Long Eaton":["bitmap/destinations/trent/zoom/zm-long-eaton.png", "bitmap/destinations/trent/zoom/zm-zoom.png"]
+        "Derby": [
+          "bitmap/destinations/trent/zoom/zm-derby.png",
+          "bitmap/destinations/trent/zoom/zm-zoom.png"
+        ],
+        "Long Eaton": [
+          "bitmap/destinations/trent/zoom/zm-long-eaton.png",
+          "bitmap/destinations/trent/zoom/zm-zoom.png"
+        ]
+      }
+    },
+    "mainline": {
+      "route": "ml",
+      "code": "003",
+      "colour": "full",
+      "destinations": {
+        "Radcliffe": [
+          "bitmap/destinations/trent/mainline/ml-radcliffe.png",
+          "bitmap/destinations/trent/mainline/ml-mainline.png"
+        ],
+        "Nottingham": [
+          "bitmap/destinations/trent/mainline/ml-nottingham.png",
+          "bitmap/destinations/trent/mainline/ml-mainline.png"
+        ]
       }
     }
   }
