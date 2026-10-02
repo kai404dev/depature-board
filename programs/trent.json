@@ -16,8 +16,8 @@
       "code": "001",
       "colour": "full",
       "destinations": {
-        "Derby":["bitmap/destinations/trent/igo/igo-derby-1.png", "bitmap/destinations/igo/igo-indigo.png"],
-        "Nottingham":["bitmap/destinations/trent/igo/igo-nottingham-1.png", "bitmap/destinations/igo/igo-indigo.png"]
+        "Derby":["bitmap/destinations/trent/igo/igo-derby.png", "bitmap/destinations/igo/igo-indigo.png"],
+        "Nottingham":["bitmap/destinations/trent/igo/igo-nottingham.png", "bitmap/destinations/igo/igo-indigo.png"]
       }
     },
     "i4": {
