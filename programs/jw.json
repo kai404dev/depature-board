@@ -4,9 +4,9 @@
   "colour": "#ff8000",
   "programs": {
     "000": {
-      "colour": "full",
       "route": "000",
-      "code": "0",
+      "code": "000",
+      "code": "000",
       "destinations": {
         "nis": [
           "bitmap/destinations/000/not-in-service.png"
@@ -19,6 +19,7 @@
     "40": {
       "colour": "full",
       "route": "40",
+      "code": "040",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/40/40-burton-1.png",
@@ -35,6 +36,7 @@
     "41": {
       "colour": "full",
       "route": "41",
+      "code": "041",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/41/41-burton-1.png",
@@ -51,6 +53,7 @@
     "42": {
       "colour": "full",
       "route": "42",
+      "code": "042",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/42/42-burton-1.png",
@@ -64,30 +67,11 @@
         ]
       }
     },
-    "401": {
-      "colour": "full",
-      "route": "401",
-      "destinations": {
-        "Burton": [
-          "bitmap/destinations/journeywise/401/401-burton-1.png",
-          "bitmap/destinations/journeywise/401/401-burton-2.png"
-        ],
-        "Burton Only": [
-          "bitmap/destinations/journeywise/401/401-burton-only.png"
-        ],
-        "Tutbury Only": [
-          "bitmap/destinations/journeywise/401/401-tutbury-only.png"
-        ],
-        "Uttoxeter": [
-          "bitmap/destinations/journeywise/401/401-uttoxeter-1.png",
-          "bitmap/destinations/journeywise/401/401-uttoxeter-2.png"
-        ]
-      }
-    },
     "C1": {
       "colour": "full",
       "route": "C1",
-      "code": "221",
+      "code": "21",
+      "code": "21",
       "destinations": {
         "Connect": [
           "bitmap/destinations/journeywise/Connect/C1/c1-connect.png"
@@ -100,7 +84,8 @@
     "C2": {
       "colour": "full",
       "route": "C2",
-      "code": "222",
+      "code": "22",
+      "code": "22",
       "destinations": {
         "Connect": [
           "bitmap/destinations/journeywise/Connect/C2/c2-connect.png"
@@ -113,7 +98,8 @@
     "C3": {
       "colour": "full",
       "route": "C3",
-      "code": "223",
+      "code": "23",
+      "code": "23",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/Connect/C3/c2-burton .png"
@@ -129,7 +115,8 @@
     "C4": {
       "colour": "full",
       "route": "C4",
-      "code": "224",
+      "code": "24",
+      "code": "24",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/Connect/C4/c4-burton.png"
@@ -145,7 +132,8 @@
     "C5": {
       "colour": "full",
       "route": "C5",
-      "code": "225",
+      "code": "25",
+      "code": "25",
       "destinations": {
         "Connect": [
           "bitmap/destinations/journeywise/Connect/C5/c5-connect.png"
@@ -161,7 +149,8 @@
     "C6": {
       "colour": "full",
       "route": "C6",
-      "code": "226",
+      "code": "26",
+      "code": "26",
       "destinations": {
         "Acorn": [
           "bitmap/destinations/journeywise/Connect/C6/c6-acorn.png"
@@ -177,7 +166,8 @@
     "D1": {
       "colour": "full",
       "route": "D1",
-      "code": "211",
+      "code": "41",
+      "code": "41",
       "destinations": {
         "Derby": [
           "bitmap/destinations/journeywise/D1/d1-derby.png"
@@ -187,7 +177,8 @@
     "D2": {
       "colour": "full",
       "route": "D2",
-      "code": "212",
+      "code": "42",
+      "code": "42",
       "destinations": {
         "Derby": [
           "bitmap/destinations/journeywise/D2/d2-derby.png"
@@ -200,7 +191,8 @@
     "NMA": {
       "colour": "full",
       "route": "NMA",
-      "code": "213",
+      "code": "311",
+      "code": "311",
       "destinations": {
         "Alrewas": [
           "bitmap/destinations/journeywise/NMA/nma-alrewas.png"
@@ -213,7 +205,8 @@
     "V1": {
       "colour": "full",
       "route": "V1",
-      "code": "201",
+      "code": "31",
+      "code": "31",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/V1/v1-burton.png"
@@ -229,7 +222,8 @@
     "V2": {
       "colour": "full",
       "route": "V2",
-      "code": "202",
+      "code": "32",
+      "code": "32",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/V2/v2-burton.png"
@@ -245,7 +239,8 @@
     "V3": {
       "colour": "full",
       "route": "V3",
-      "code": "203",
+      "code": "33",
+      "code": "33",
       "destinations": {
         "Nottingham": [
           "bitmap/destinations/journeywise/V3/v3-nottingham.png"
@@ -261,7 +256,8 @@
     "V4": {
       "colour": "full",
       "route": "V4",
-      "code": "204",
+      "code": "34",
+      "code": "34",
       "destinations": {
         "The Villages": [
           "bitmap/destinations/journeywise/V4/v4-the-villages.png"
@@ -274,7 +270,8 @@
     "X1": {
       "colour": "full",
       "route": "X1",
-      "code": "214",
+      "code": "11",
+      "code": "11",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/X1/X1-burton.png"
@@ -287,7 +284,8 @@
     "X2": {
       "colour": "full",
       "route": "X2",
-      "code": "215",
+      "code": "12",
+      "code": "12",
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/X2/X2-burton.png"
@@ -300,7 +298,8 @@
     "X3": {
       "colour": "full",
       "route": "X3",
-      "code": "216",
+      "code": "13",
+      "code": "13",
       "destinations": {
         "Derby": [
           "bitmap/destinations/journeywise/X3/X3-derby.png"
@@ -313,7 +312,8 @@
     "X4": {
       "colour": "full",
       "route": "X4",
-      "code": "217",
+      "code": "14",
+      "code": "14",
       "destinations": {
         "Birmingham": [
           "bitmap/destinations/journeywise/X4/X4-birmingham.png"
@@ -326,6 +326,7 @@
     "X5": {
       "colour": "full",
       "route": "X5",
+      "code": "15",
       "code": "15",
       "destinations": {
         "Birmingham": [
@@ -340,6 +341,7 @@
       "colour": "full",
       "route": "X8",
       "code": "18",
+      "code": "18",
       "destinations": {
         "Leicester": [
           "bitmap/destinations/journeywise/X8/X8-leicester.png"
@@ -349,31 +351,10 @@
         ]
       }
     },
-    "X12": {
-      "colour": "full",
-      "route": "X12",
-      "code": "112",
-      "destinations": {
-        "Burton Only": [
-          "bitmap/destinations/journeywise/X12/X12-burton-only.png"
-        ],
-        "Lichfield Only": [
-          "bitmap/destinations/journeywise/X12/X12-lichfield-only.png"
-        ],
-        "Lichfield then Burton": [
-          "bitmap/destinations/journeywise/X12/X12-lichfield-then-burton.png"
-        ],
-        "Lichfield then Sutton": [
-          "bitmap/destinations/journeywise/X12/X12-lichfield-then-sutton.png"
-        ],
-        "Sutton Coldfield Only": [
-          "bitmap/destinations/journeywise/X12/X12-sutton-coldfield-only.png"
-        ]
-      }
-    },
     "X43": {
       "colour": "full",
       "route": "X43",
+      "code": "143",
       "code": "143",
       "destinations": {
         "Burton": [
@@ -393,6 +374,7 @@
     "X66": {
       "colour": "full",
       "route": "X66",
+      "code": "166",
       "code": "166",
       "destinations": {
         "Lichfield": [
