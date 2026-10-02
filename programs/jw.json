@@ -16,6 +16,7 @@
       }
     },
     "40": {
+      "colour": "#ff8000",
       "route": "40",
       "code": "040",
       "destinations": {
