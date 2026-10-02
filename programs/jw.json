@@ -12,6 +12,9 @@
         ],
         "learner": [
           "bitmap/destinations/000/learner.png"
+        ],
+        "JourneyWise": [
+          "bitmap/destinations/logos/journeywise.png"
         ]
       }
     },
