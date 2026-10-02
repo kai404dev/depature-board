@@ -16,7 +16,7 @@
       }
     },
     "40": {
-
+      "colour": "full",
       "route": "40",
       "code": "040",
       "destinations": {
@@ -75,7 +75,7 @@
           "bitmap/destinations/journeywise/Connect/C1/c1-connect.png"
         ],
         "Swadlincote": [
-          "bitmap/destinations/journeywise/Connect/C1/c1-swadlincote .png"
+          "bitmap/destinations/journeywise/Connect/C1/c1-swadlincote.png"
         ]
       }
     },
