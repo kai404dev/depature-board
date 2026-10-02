@@ -599,7 +599,7 @@ def main():
     ap.add_argument("--led-chain", type=int, default=3)
     ap.add_argument("--led-parallel", type=int, default=1)
     ap.add_argument("--led-gpio-mapping", default="regular")
-    ap.add_argument("--led-brightness", type=int, default=100)
+    ap.add_argument("--led-brightness", type=int, default=60)
     ap.add_argument("--led-pwm-bits", type=int, default=8)
     ap.add_argument("--led-limit-refresh", type=int, default=0)
     ap.add_argument("--led-slowdown-gpio", type=int, default=1)
