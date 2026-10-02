@@ -49,6 +49,14 @@ Defaults cascade: screen -> programme -> file -> built-in (10s, fit).
   python3 program.py programs.json --program 401 --destination Burton --preview
   python3 program.py programs.json --list
   sudo python3 program.py programs.json --program 401
+
+Web portal (Mobitec ICU 602 replica) on :4040: F1 enters the route,
+F2 picks the destination (arrows or numeric id), the keypad takes
+route+dest codes. Destination ids default to file order (0, 1, 2)
+and are overridable per destination with {"id": N}:
+
+  sudo python3 program.py programs.json --program 401 --portal
+  python3 program.py programs.json --serve --port 4040
 """
 
 import argparse
@@ -108,6 +116,37 @@ def parse_colour(v, prog_name, label):
 
 def colour_str(rgb):
     return "#%02x%02x%02x" % rgb
+
+
+def destination_ids(raw, prog_name):
+    """[(name, id)] in file order for one programme.
+
+    The id defaults to the destination's position (0, 1, 2, ...),
+    overridable per destination with {"id": N} alongside images.
+    """
+    dests_raw = raw.get("destinations", [])
+    if isinstance(dests_raw, dict):
+        if not dests_raw:
+            sys.exit(f"program '{prog_name}': 'destinations' is empty")
+        out, seen = [], set()
+        for i, (dname, entry) in enumerate(dests_raw.items()):
+            ident = i
+            if isinstance(entry, dict):
+                ident = entry.get("id", i)
+                if isinstance(ident, bool) or not isinstance(ident, int) \
+                        or ident < 0:
+                    sys.exit(f"program '{prog_name}' destination "
+                             f"'{dname}': id must be 0 or more")
+            if ident in seen:
+                sys.exit(f"program '{prog_name}': duplicate "
+                         f"destination id {ident}")
+            seen.add(ident)
+            out.append((str(dname), ident))
+        return out
+    if isinstance(dests_raw, str):
+        dests_raw = [dests_raw]
+    dests = [str(d).strip() for d in dests_raw if str(d).strip()]
+    return [(d, i) for i, d in enumerate(dests)]
 
 
 def parse_screen(s, prog_name, label, pRotate, pFit, dColour):
@@ -215,7 +254,7 @@ def resolve_program(data, progs, gRotate, gFit, gColour, name,
             "screens": out}
 
 
-def run_program(args, prog):
+def run_program(args, prog, watch=None):
     from rgbmatrix import RGBMatrix, RGBMatrixOptions
 
     options = RGBMatrixOptions()
@@ -275,7 +314,38 @@ def run_program(args, prog):
         offscreen = matrix.SwapOnVSync(offscreen)
         if args.once:
             break
+        if watch is not None and watch():
+            break
         time.sleep(0.5)
+
+
+def run_dynamic(args, ctl):
+    """Matrix loop following the portal controller's live selection.
+
+    Re-resolves and reloads frames whenever the route, destination
+    or program file changes; keeps the old screens if the file
+    momentarily breaks.
+    """
+    last = None
+    while True:
+        ctl.refresh()
+        key = ctl.key()
+        if key != last:
+            try:
+                prog = ctl.resolve()
+            except SystemExit as e:
+                print(f"selection failed ({e}); keeping screens",
+                      file=sys.stderr, flush=True)
+                time.sleep(2)
+                continue
+            last = key
+            run_program(args, prog,
+                        watch=lambda k=key: ctl.refresh() or
+                        ctl.key() != k)
+            if args.once:
+                break
+        else:
+            time.sleep(0.5)
 
 
 def main():
@@ -301,6 +371,13 @@ def main():
                    help="Show the first screen, then exit")
     p.add_argument("--preview", action="store_true",
                    help="ASCII preview of every screen (no hardware needed)")
+    p.add_argument("--portal", action="store_true",
+                   help="Host the ICU 602 web portal alongside the matrix "
+                        "(default port 4040)")
+    p.add_argument("--port", type=int, default=4040,
+                   help="Web portal port (default 4040)")
+    p.add_argument("--serve", action="store_true",
+                   help="Host the web portal only, without the matrix")
     p.add_argument("--led-rows", type=int, default=40)
     p.add_argument("--led-cols", type=int, default=80)
     p.add_argument("--led-chain", type=int, default=3)
@@ -320,15 +397,34 @@ def main():
     data, progs, gRotate, gFit, gColour = load_programs_file(
         args.program_file)
 
+    ctl = None
+    if args.portal or args.serve:
+        from portal import Controller, serve
+        ctl = Controller(args.program_file, program=args.program,
+                         dest=args.destination)
+        if args.serve:
+            serve(ctl, args.port)  # blocking
+            return
+        import threading
+        threading.Thread(target=serve, args=(ctl, args.port),
+                         daemon=True).start()
+        print(f"portal on :{args.port}", file=sys.stderr, flush=True)
+        run_dynamic(args, ctl)
+        return
+
     if args.list:
         for name in sorted(progs):
             raw = progs[name] if isinstance(progs[name], dict) else {}
             route = raw.get("route", "?")
             dests = raw.get("destinations", [])
             if isinstance(dests, dict):
-                parts = [f"{d}x{len(v)}"
-                         for d, v in dests.items()
-                         if isinstance(v, list)]
+                parts = []
+                for d, i in destination_ids(raw, name):
+                    v = dests[d]
+                    if isinstance(v, dict):
+                        v = v.get("images", v.get("screens", []))
+                    n = len(v) if isinstance(v, list) else 0
+                    parts.append(f"{d}#{i}x{n}")
                 print(f"{name}: route {route} "
                       f"({', '.join(parts)})")
                 continue
