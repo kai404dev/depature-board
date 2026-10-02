@@ -15,6 +15,9 @@
         ],
         "JourneyWise": {"colour": "full", "images": [
           "bitmap/destinations/logos/journeywise.png"
+        ]},
+        "Gay": {"colour": "full", "images": [
+          "bitmap/fun/gaydrew.png"
         ]}
       }
     },
