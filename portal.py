@@ -487,19 +487,25 @@ class Controller:
         flat = self._flat()
         if self.buffer:
             big = self.buffer
+            bigimg = None
         elif self.field == "all" and flat:
             p, d, _ = flat[self.hi_all % len(flat)]
             big = f"{self._route_of(p)} {d}"
+            bigimg = self._first_image(p, d)
         elif self.dest_name:
             big = f"{route} {self.dest_name}"
+            bigimg = self._first_image(self.program_name,
+                                       self.dest_name)
         else:
             big = f"{route} ALL" if route else "---"
+            bigimg = None
         return {
             "program": self.program_name,
             "route": route,
             "dest": self.dest_name,
             "dest_id": cur_id,
             "big": big,
+            "bigimg": bigimg,
             "field": self.field,
             "buffer": self.buffer,
             "hi": self.hi,
@@ -554,6 +560,8 @@ display:grid;grid-template-columns:1fr 148px;gap:10px}
 letter-spacing:1px;white-space:nowrap;overflow:hidden;
 text-shadow:0 1px 0 rgba(255,255,255,.35)}
 .big span{border:2px solid #22374e;padding:1px 12px;display:inline-block}
+.big img{display:none;max-width:100%;height:66px;image-rendering:pixelated;
+border:2px solid #22374e;padding:2px;background:#000}
 .meta{font-family:"Courier New",Courier,monospace;font-size:18px;line-height:1.6}
 .soft{display:flex;justify-content:space-between;margin-top:10px;grid-column:1/-1}
 .soft button{background:#1d3a4c;color:#fff;border:0;border-radius:3px;
@@ -629,7 +637,7 @@ button{font-family:inherit}
 </div>
 <div class="mid">
 <div class="lcdwrap"><div class="lcd">
-<div><div class="big"><span id="big">---</span></div>
+<div><div class="big"><span id="big">---</span><img id="bigimg" alt=""></div>
 <div class="soft"><button onclick="press('dest')">Dest</button>
 <button onclick="press('clearall')">Clear all</button></div></div>
 <div class="meta"><div id="line">Line: -</div><div id="dest">Dest: -</div>
@@ -676,7 +684,22 @@ arrows, Enter, Backspace</div>
 <script>
 var lastChips='';
 function update(s){
-document.getElementById('big').textContent=s.big;
+var bt=document.getElementById('big'),bi=document.getElementById('bigimg');
+var src=null;
+if(!s.buffer){
+if(s.field=='dest'&&s.destinations[s.hi]&&s.destinations[s.hi].img)
+src=s.destinations[s.hi].img;
+else if(s.field!='dest'&&s.bigimg)src=s.bigimg;
+}
+if(src){
+bt.style.display='none';bi.style.display='inline';
+if(bi.getAttribute('data-p')!=src){
+bi.setAttribute('data-p',src);
+bi.src='/api/img?path='+encodeURIComponent(src);}
+}else{
+bi.style.display='none';bi.removeAttribute('data-p');
+bt.style.display='inline';bt.textContent=s.big;
+}
 document.getElementById('line').textContent='Line: '+(s.route||'-');
 document.getElementById('dest').textContent='Dest: '+
 (s.dest_id===null||s.dest_id===undefined?'-':s.dest_id);

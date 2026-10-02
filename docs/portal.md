@@ -17,9 +17,10 @@ step even as separate processes (see Control file below).
 
 It mirrors the ICU 602 handset in the cab:
 
-- **LCD**: big `route destination` readout, with `Line:` (route),
-  `Dest:` (destination id) and `Extr:` on the right. While typing,
-  the big readout echoes the keypad buffer.
+- **LCD**: shows the destination image itself (the F2/F5
+  highlight while browsing, the live pick otherwise), with `Line:`
+  (route), `Dest:` (destination id) and `Extr:` on the right. While
+  typing, the readout echoes the keypad buffer as text.
 - **Softkeys**: `Dest` jumps to destination entry (same as F2),
   `Clear all` resets to the startup selection.
 - **F1** enters the route number. Type digits, ✓ to confirm.
