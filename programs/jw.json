@@ -13,9 +13,9 @@
         "learner": [
           "bitmap/destinations/000/learner.png"
         ],
-        "JourneyWise": [
+        "JourneyWise": {"colour": "full", "image": [
           "bitmap/destinations/logos/journeywise.png"
-        ]
+        ]}
       }
     },
     "40": {
