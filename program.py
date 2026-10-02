@@ -3,8 +3,9 @@
 Image programmes for the bus LED matrix (the image part of bus-board).
 
 A programme is a named sequence of full-panel PNG images played in
-order: which route it belongs to, the destinations it serves, and
-the images. Example programs.json:
+order: which route it belongs to, the destinations it serves (each
+with its own images, in play order), and the images. Example
+programs.json:
 
   {
     "rotate_seconds": 10,
@@ -12,23 +13,23 @@ the images. Example programs.json:
     "programs": {
       "401": {
         "route": "401",
-        "destinations": ["Burton upon Trent", "Tutbury", "Uttoxeter"],
-        "rotate_seconds": 10,
-        "screens": [
-          "bitmap/mbt.png",
-          {"image": "bitmap/fluffynet.png", "seconds": 5}
-        ]
+        "destinations": {
+          "Burton": ["bitmap/destinations/401/burton/401-burton-1.png",
+                     "bitmap/destinations/401/burton/401-burton-2.png"],
+          "Tutbury": ["bitmap/destinations/401/tutbury/401-tutbury-only.png"]
+        }
       }
     }
   }
 
-Each screen is an image path, or {"image": path, "seconds": N,
+Each image is a path, or {"image": path, "seconds": N,
 "fit": fit|fill|stretch} to override the dwell / fit for that
-screen. Defaults cascade: screen -> programme -> file -> built-in
-(10s, fit). Destinations may also be a single string.
+screen. Without --destination every destination plays in file order;
+with it, only that destination's screens play. Defaults cascade:
+screen -> programme -> file -> built-in (10s, fit).
 
   python3 program.py programs.json --program 401 --mock --once
-  python3 program.py programs.json --program 401 --preview
+  python3 program.py programs.json --program 401 --destination Burton --preview
   python3 program.py programs.json --list
   sudo python3 program.py programs.json --program 401
 """
@@ -71,7 +72,30 @@ def load_programs_file(path):
     return data, progs, gRotate, gFit
 
 
-def resolve_program(data, progs, gRotate, gFit, name, path):
+def parse_screen(s, prog_name, label, pRotate, pFit):
+    if isinstance(s, str):
+        s = {"image": s}
+    if not isinstance(s, dict) or not str(s.get("image", "")).strip():
+        sys.exit(f"program '{prog_name}' {label}: must be an image "
+                 f"path or {{\"image\": path, ...}}")
+    sec = s.get("seconds", pRotate)
+    try:
+        sec = float(sec)
+    except (TypeError, ValueError):
+        sys.exit(f"program '{prog_name}' {label}: seconds must be "
+                 f"a number")
+    if sec <= 0:
+        sys.exit(f"program '{prog_name}' {label}: seconds must be "
+                 f"positive")
+    fit = s.get("fit", pFit)
+    if fit not in FITS:
+        sys.exit(f"program '{prog_name}' {label}: fit must be one "
+                 f"of {FITS}")
+    return {"image": str(s["image"]).strip(),
+            "seconds": sec, "fit": fit}
+
+
+def resolve_program(data, progs, gRotate, gFit, name, dest_filter, path):
     if name is None:
         if len(progs) == 1:
             name = next(iter(progs))
@@ -88,44 +112,52 @@ def resolve_program(data, progs, gRotate, gFit, name, path):
     route = str(raw.get("route", "")).strip()
     if not route:
         sys.exit(f"program '{name}': need a 'route', e.g. \"401\"")
-    dests = raw.get("destinations", [])
-    if isinstance(dests, str):
-        dests = [dests]
-    if not isinstance(dests, list) or \
-            not [d for d in dests if str(d).strip()]:
-        sys.exit(f"program '{name}': need 'destinations' as a list, "
-                 f"e.g. [\"Burton upon Trent\", \"Tutbury\"]")
-    dests = [str(d).strip() for d in dests if str(d).strip()]
     pRotate = raw.get("rotate_seconds", gRotate)
     pFit = raw.get("image_fit", gFit)
     if pFit not in FITS:
         sys.exit(f"program '{name}': image_fit must be one of {FITS}")
-    screens = raw.get("screens")
-    if not isinstance(screens, list) or not screens:
-        sys.exit(f"program '{name}': need a non-empty 'screens' list "
-                 f"of image paths, in play order")
+    dests_raw = raw.get("destinations", [])
+    pairs = []  # (destination or None, screen entry), file order
+    if isinstance(dests_raw, dict):
+        if not dests_raw:
+            sys.exit(f"program '{name}': 'destinations' is empty")
+        for dname, lst in dests_raw.items():
+            if not isinstance(lst, list) or not lst:
+                sys.exit(f"program '{name}' destination '{dname}': "
+                         f"need a non-empty list of images")
+            for s in lst:
+                pairs.append((str(dname), s))
+        dests = [str(d) for d in dests_raw]
+    else:
+        if isinstance(dests_raw, str):
+            dests_raw = [dests_raw]
+        if not isinstance(dests_raw, list) or \
+                not [d for d in dests_raw if str(d).strip()]:
+            sys.exit(f"program '{name}': need 'destinations' as a "
+                     f"list or {{\"name\": [images...]}}")
+        dests = [str(d).strip() for d in dests_raw if str(d).strip()]
+        screens = raw.get("screens")
+        if not isinstance(screens, list) or not screens:
+            sys.exit(f"program '{name}': need a non-empty 'screens' "
+                     f"list of image paths, in play order")
+        pairs = [(None, s) for s in screens]
+    if dest_filter is not None:
+        hit = next((d for d in dests
+                    if d.lower() == dest_filter.lower()), None)
+        if hit is None:
+            sys.exit(f"program '{name}' has no destination "
+                     f"'{dest_filter}' "
+                     f"(have: {', '.join(dests)})")
+        pairs = [(d, s) for d, s in pairs if d == hit]
+        dests = [hit]
     out = []
-    for i, s in enumerate(screens, 1):
-        if isinstance(s, str):
-            s = {"image": s}
-        if not isinstance(s, dict) or not str(s.get("image", "")).strip():
-            sys.exit(f"program '{name}' screen {i}: must be an image "
-                     f"path or {{\"image\": path, ...}}")
-        sec = s.get("seconds", pRotate)
-        try:
-            sec = float(sec)
-        except (TypeError, ValueError):
-            sys.exit(f"program '{name}' screen {i}: seconds must be "
-                     f"a number")
-        if sec <= 0:
-            sys.exit(f"program '{name}' screen {i}: seconds must be "
-                     f"positive")
-        fit = s.get("fit", pFit)
-        if fit not in FITS:
-            sys.exit(f"program '{name}' screen {i}: fit must be one "
-                     f"of {FITS}")
-        out.append({"image": str(s["image"]).strip(),
-                    "seconds": sec, "fit": fit})
+    for i, (d, s) in enumerate(pairs, 1):
+        label = f"screen {i}" + (f" ({d})" if d else "")
+        entry = parse_screen(s, name, label, pRotate, pFit)
+        entry["destination"] = d
+        out.append(entry)
+    if not out:
+        sys.exit(f"program '{name}': no screens to play")
     return {"name": name, "route": route, "destinations": dests,
             "screens": out}
 
@@ -157,8 +189,9 @@ def run_program(args, prog):
     for s in prog["screens"]:
         sw, sh, frame = load_frame(s["image"], W, H, s["fit"])
         frames.append((s, frame))
+        tag = f" [{s['destination']}]" if s.get("destination") else ""
         print(f"image {s['image']}: {sw}x{sh} -> {s['fit']} {W}x{H} "
-              f"({s['seconds']}s)", file=sys.stderr, flush=True)
+              f"({s['seconds']}s){tag}", file=sys.stderr, flush=True)
     print(f"program '{prog['name']}' route {prog['route']} "
           f"({', '.join(prog['destinations'])}) "
           f"{W}x{H} screens={len(frames)}",
@@ -195,6 +228,9 @@ def main():
     p.add_argument("--program", default=None,
                    help="Programme to play (unneeded when the file "
                         "holds just one)")
+    p.add_argument("--destination", default=None,
+                   help="Play only this destination's screens "
+                        "(default: every destination in file order)")
     p.add_argument("--list", action="store_true",
                    help="List programmes in the file and exit")
     p.add_argument("--rotate-seconds", type=float, default=None,
@@ -231,6 +267,13 @@ def main():
             raw = progs[name] if isinstance(progs[name], dict) else {}
             route = raw.get("route", "?")
             dests = raw.get("destinations", [])
+            if isinstance(dests, dict):
+                parts = [f"{d}x{len(v)}"
+                         for d, v in dests.items()
+                         if isinstance(v, list)]
+                print(f"{name}: route {route} "
+                      f"({', '.join(parts)})")
+                continue
             if isinstance(dests, str):
                 dests = [dests]
             n = len(raw.get("screens", [])) \
@@ -241,7 +284,7 @@ def main():
         return
 
     prog = resolve_program(data, progs, gRotate, gFit, args.program,
-                           args.program_file)
+                           args.destination, args.program_file)
     if args.rotate_seconds is not None:
         if args.rotate_seconds <= 0:
             sys.exit("--rotate-seconds must be positive")
@@ -255,11 +298,16 @@ def main():
         print(f"program '{prog['name']}' route {prog['route']} "
               f"({', '.join(prog['destinations'])})")
         from images import describe_images
-        for path, w, h in describe_images(
-                [s["image"] for s in prog["screens"]]):
-            sec = next(s["seconds"] for s in prog["screens"]
-                       if s["image"] == path)
-            print(f"  [{sec:g}s] {path} ({w}x{h})")
+        last_dest = None
+        infos = {p: (w, h) for p, w, h in describe_images(
+            [s["image"] for s in prog["screens"]])}
+        for s in prog["screens"]:
+            if s.get("destination") != last_dest:
+                last_dest = s.get("destination")
+                if last_dest:
+                    print(f"  {last_dest}:")
+            w, h = infos[s["image"]]
+            print(f"    [{s['seconds']:g}s] {s['image']} ({w}x{h})")
         return
 
     if args.preview:
@@ -276,7 +324,8 @@ def main():
                              "screens": [s]})
             print(f"--- program '{prog['name']}' screen {i}/"
                   f"{len(prog['screens'])} ({W}x{H}) {s['image']} "
-                  f"[{s['seconds']:g}s] ---")
+                  f"[{s['seconds']:g}s]"
+                  f"{' ' + s['destination'] if s.get('destination') else ''} ---")
             lit = sum(1 for v in rec.paint.values() if v != (0, 0, 0))
             print(f"  {lit} lit pixels of {W * H}")
         return
