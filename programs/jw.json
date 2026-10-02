@@ -15,6 +15,38 @@
         ]
       }
     },
+    "40": {
+      "route": "40",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/journeywise/40/40-burton-1.png",
+          "bitmap/destinations/journeywise/40/40-burton-2.png"
+        ],
+        "The Forties": [
+          "bitmap/destinations/journeywise/40/40-the-forties.png"
+        ],
+        "Uttoxeter": [
+          "bitmap/destinations/journeywise/40/40-uttoxeter-1.png",
+          "bitmap/destinations/journeywise/40/40-uttoxeter-2.png"
+        ]
+      }
+    },
+    "41": {
+      "route": "41",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/journeywise/41/41-burton-1.png",
+          "bitmap/destinations/journeywise/41/41-burton-2.png"
+        ],
+        "The Forties": [
+          "bitmap/destinations/journeywise/41/41-the-forties.png"
+        ],
+        "Uttoxeter": [
+          "bitmap/destinations/journeywise/41/41-uttoxeter-1.png",
+          "bitmap/destinations/journeywise/41/41-uttoxeter-2.png"
+        ]
+      }
+    },
     "401": {
       "route": "401",
       "destinations": {
