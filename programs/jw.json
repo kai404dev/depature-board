@@ -16,7 +16,6 @@
       }
     },
     "40": {
-      
       "route": "40",
       "code": "040",
       "destinations": {
@@ -262,9 +261,7 @@
           "bitmap/destinations/journeywise/X1/X1-burton.png"
         ],
         "Derby": [
-          "bitmap/destinations/journeywise/X1/X1-derby.png"
-        ],
-        "Xpress Connect": [
+          "bitmap/destinations/journeywise/X1/X1-derby.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -278,9 +275,7 @@
           "bitmap/destinations/journeywise/X2/X2-burton.png",
         ],
         "Lichfield": [
-          "bitmap/destinations/journeywise/X2/X2-lichfield.png"
-        ],
-        "Xpress Connect": [
+          "bitmap/destinations/journeywise/X2/X2-lichfield.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -294,9 +289,7 @@
           "bitmap/destinations/journeywise/X3/X3-derby.png"
         ],
         "Nottingham": [
-          "bitmap/destinations/journeywise/X3/X3-nottingham.png"
-        ],
-        "Xpress Connect": [
+          "bitmap/destinations/journeywise/X3/X3-nottingham.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -310,9 +303,7 @@
           "bitmap/destinations/journeywise/X4/X4-birmingham.png"
         ],
         "Lichfield": [
-          "bitmap/destinations/journeywise/X4/X4-lichfield.png"
-        ],
-        "Xpress Connect": [
+          "bitmap/destinations/journeywise/X4/X4-lichfield.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -326,9 +317,7 @@
           "bitmap/destinations/journeywise/X5/X5-birmingham.png"
         ],
         "Coventry": [
-          "bitmap/destinations/journeywise/X5/X5-coventry.png"
-        ],
-        "Xpress Connect": [
+          "bitmap/destinations/journeywise/X5/X5-coventry.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -342,9 +331,7 @@
           "bitmap/destinations/journeywise/X8/X8-leicester.png"
         ],
         "Peterborough": [
-          "bitmap/destinations/journeywise/X8/X8-peterborough.png"
-        ],
-        "Xpress Connect": [
+          "bitmap/destinations/journeywise/X8/X8-peterborough.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -364,9 +351,7 @@
           "bitmap/destinations/journeywise/X43/X43-uttoxeter-then-burton.png"
         ],
         "Uttoxeter then Stoke": [
-          "bitmap/destinations/journeywise/X43/X43-uttoxeter-then-stoke.png"
-        ],
-        "Xpress Connect": [
+          "bitmap/destinations/journeywise/X43/X43-uttoxeter-then-stoke.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -380,9 +365,7 @@
           "bitmap/destinations/journeywise/X66/X66-lichfield.png"
         ],
         "Tamworth": [
-          "bitmap/destinations/journeywise/X66/X66-tamworth.png"
-        ],
-        "Xpress Connect": [
+          "bitmap/destinations/journeywise/X66/X66-tamworth.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
