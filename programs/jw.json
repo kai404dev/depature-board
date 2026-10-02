@@ -21,14 +21,14 @@
       "code": "040",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/40/40-burton-1.png",
-          "bitmap/destinations/journeywise/40/40-burton-2.png",
-          "bitmap/destinations/journeywise/40/40-the-forties.png"
+          "bitmap/destinations/journeywise/the forties/40/40-burton-1.png",
+          "bitmap/destinations/journeywise/the forties/40/40-burton-2.png",
+          "bitmap/destinations/journeywise/the forties/40/40-the-forties.png"
         ],
         "Uttoxeter": [
-          "bitmap/destinations/journeywise/40/40-uttoxeter-1.png",
-          "bitmap/destinations/journeywise/40/40-uttoxeter-2.png",
-          "bitmap/destinations/journeywise/40/40-the-forties.png"
+          "bitmap/destinations/journeywise/the forties/40/40-uttoxeter-1.png",
+          "bitmap/destinations/journeywise/the forties/40/40-uttoxeter-2.png",
+          "bitmap/destinations/journeywise/the forties/40/40-the-forties.png"
         ]
       }
     },
@@ -38,14 +38,14 @@
       "code": "041",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/41/41-burton-1.png",
-          "bitmap/destinations/journeywise/41/41-burton-2.png",
-          "bitmap/destinations/journeywise/41/41-the-forties.png"
+          "bitmap/destinations/journeywise/the forties/41/41-burton-1.png",
+          "bitmap/destinations/journeywise/the forties/41/41-burton-2.png",
+          "bitmap/destinations/journeywise/the forties/41/41-the-forties.png"
         ],
         "Uttoxeter": [
-          "bitmap/destinations/journeywise/41/41-uttoxeter-1.png",
-          "bitmap/destinations/journeywise/41/41-uttoxeter-2.png",
-          "bitmap/destinations/journeywise/41/41-the-forties.png"
+          "bitmap/destinations/journeywise/the forties/41/41-uttoxeter-1.png",
+          "bitmap/destinations/journeywise/the forties/41/41-uttoxeter-2.png",
+          "bitmap/destinations/journeywise/the forties/41/41-the-forties.png"
         ]
       }
     },
@@ -55,14 +55,14 @@
       "code": "042",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/42/42-burton-1.png",
-          "bitmap/destinations/journeywise/42/42-burton-2.png",
-          "bitmap/destinations/journeywise/42/42-the-forties.png"
+          "bitmap/destinations/journeywise/the forties/42/42-burton-1.png",
+          "bitmap/destinations/journeywise/the forties/42/42-burton-2.png",
+          "bitmap/destinations/journeywise/the forties/42/42-the-forties.png"
         ],
         "Uttoxeter": [
-          "bitmap/destinations/journeywise/42/42-uttoxeter-1.png",
-          "bitmap/destinations/journeywise/42/42-uttoxeter-2.png",
-          "bitmap/destinations/journeywise/42/42-the-forties.png"
+          "bitmap/destinations/journeywise/the forties/42/42-uttoxeter-1.png",
+          "bitmap/destinations/journeywise/the forties/42/42-uttoxeter-2.png",
+          "bitmap/destinations/journeywise/the forties/42/42-the-forties.png"
         ]
       }
     },
@@ -190,12 +190,12 @@
       "code": "401",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/V1/v1-burton.png",
-          "bitmap/destinations/journeywise/V1/v1-the-villages.png"
+          "bitmap/destinations/journeywise/the Villages/V1/v1-burton.png",
+          "bitmap/destinations/journeywise/the Villages/V1/v1-the-villages.png"
         ],
         "Derby": [
-          "bitmap/destinations/journeywise/V1/v1-derby.png",
-          "bitmap/destinations/journeywise/V1/v1-the-villages.png"
+          "bitmap/destinations/journeywise/the Villages/V1/v1-derby.png",
+          "bitmap/destinations/journeywise/the Villages/V1/v1-the-villages.png"
         ]
       }
     },
@@ -205,12 +205,12 @@
       "code": "402",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/V2/v2-burton.png",
-          "bitmap/destinations/journeywise/V2/v2-the-villages.png"
+          "bitmap/destinations/journeywise/the Villages/V2/v2-burton.png",
+          "bitmap/destinations/journeywise/the Villages/V2/v2-the-villages.png"
         ],
         "Derby": [
-          "bitmap/destinations/journeywise/V2/v2-derby.png",
-          "bitmap/destinations/journeywise/V2/v2-the-villages.png"
+          "bitmap/destinations/journeywise/the Villages/V2/v2-derby.png",
+          "bitmap/destinations/journeywise/the Villages/V2/v2-the-villages.png"
         ]
       }
     },
@@ -220,12 +220,12 @@
       "code": "403",
       "destinations": {
         "Nottingham": [
-          "bitmap/destinations/journeywise/V3/v3-nottingham.png",
-          "bitmap/destinations/journeywise/V3/v3-the-villages.png"
+          "bitmap/destinations/journeywise/the Villages/V3/v3-nottingham.png",
+          "bitmap/destinations/journeywise/the Villages/V3/v3-the-villages.png"
         ],
         "Radcliffe": [
-          "bitmap/destinations/journeywise/V3/v3-radcliffe.png",
-          "bitmap/destinations/journeywise/V3/v3-the-villages.png"
+          "bitmap/destinations/journeywise/the Villages/V3/v3-radcliffe.png",
+          "bitmap/destinations/journeywise/the Villages/V3/v3-the-villages.png"
         ]
       }
     },
@@ -235,8 +235,8 @@
       "code": "404",
       "destinations": {
         "Thorneywood Circular": [
-          "bitmap/destinations/journeywise/V4/v4-thorneywood-circular.png",
-          "bitmap/destinations/journeywise/V4/v4-the-villages.png"
+          "bitmap/destinations/journeywise/the Villages/V4/v4-thorneywood-circular.png",
+          "bitmap/destinations/journeywise/the Villages/V4/v4-the-villages.png"
         ]
       }
     },
@@ -246,11 +246,11 @@
       "code": "101",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/X1/X1-burton.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X1/X1-burton.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Derby": [
-          "bitmap/destinations/journeywise/X1/X1-derby.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X1/X1-derby.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -261,11 +261,11 @@
       "code": "102",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/X2/X2-burton.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X2/X2-burton.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Lichfield": [
-          "bitmap/destinations/journeywise/X2/X2-lichfield.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X2/X2-lichfield.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -276,11 +276,11 @@
       "code": "103",
       "destinations": {
         "Derby": [
-          "bitmap/destinations/journeywise/X3/X3-derby.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X3/X3-derby.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Nottingham": [
-          "bitmap/destinations/journeywise/X3/X3-nottingham.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X3/X3-nottingham.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -291,11 +291,11 @@
       "code": "104",
       "destinations": {
         "Birmingham": [
-          "bitmap/destinations/journeywise/X4/X4-birmingham.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X4/X4-birmingham.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Lichfield": [
-          "bitmap/destinations/journeywise/X4/X4-lichfield.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X4/X4-lichfield.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -306,11 +306,11 @@
       "code": "105",
       "destinations": {
         "Birmingham": [
-          "bitmap/destinations/journeywise/X5/X5-birmingham.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X5/X5-birmingham.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Coventry": [
-          "bitmap/destinations/journeywise/X5/X5-coventry.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X5/X5-coventry.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -321,11 +321,11 @@
       "code": "108",
       "destinations": {
         "Leicester": [
-          "bitmap/destinations/journeywise/X8/X8-leicester.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X8/X8-leicester.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Peterborough": [
-          "bitmap/destinations/journeywise/X8/X8-peterborough.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X8/X8-peterborough.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -336,19 +336,19 @@
       "code": "143",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/journeywise/X43/X43-burton.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X43/X43-burton.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Stoke": [
-          "bitmap/destinations/journeywise/X43/X43-stoke.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X43/X43-stoke.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Uttoxeter then Burton": [
-          "bitmap/destinations/journeywise/X43/X43-uttoxeter-then-burton.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X43/X43-uttoxeter-then-burton.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Uttoxeter then Stoke": [
-          "bitmap/destinations/journeywise/X43/X43-uttoxeter-then-stoke.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X43/X43-uttoxeter-then-stoke.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
@@ -359,11 +359,11 @@
       "code": "166",
       "destinations": {
         "Lichfield": [
-          "bitmap/destinations/journeywise/X66/X66-lichfield.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X66/X66-lichfield.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Tamworth": [
-          "bitmap/destinations/journeywise/X66/X66-tamworth.png",
+          "bitmap/destinations/journeywise/Xpress Connect/X66/X66-tamworth.png",
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
