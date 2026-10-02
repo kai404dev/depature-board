@@ -1,24 +1,25 @@
 {
-  "_comment": "Image programmes for program.py. Each programme names its route, the destinations it serves, and the PNG screens in play order. Defaults cascade screen -> programme -> file -> built-in (10s, fit).",
   "rotate_seconds": 10,
   "image_fit": "fit",
   "programs": {
     "401": {
       "route": "401",
-      "destinations": ["Burton upon Trent", "Tutbury", "Uttoxeter"],
-      "rotate_seconds": 10,
-      "screens": [
-        "bitmap/mbt.png",
-        "bitmap/fluffynet.png"
-      ]
+      "destinations": {
+        "Burton":["bitmap/destinations/401/burton/401-burton-1.png", "bitmap/destinations/401/burton/401-burton-2.png"],
+        "Uttoxeter":["bitmap/destinations/401/uttoxeter/401-uttoxeter-1.png", "bitmap/destinations/401/uttoxeter/401-uttoxeter-2.png"],
+        "Tutbury":["bitmap/destinations/401/burton/401-tutbury-only.png"],
+        "Burton Only":["bitmap/destinations/401/burton/401-burton-only.png"]
+      }
     },
-    "1": {
-      "route": "1",
-      "destinations": ["Burton upon Trent", "Uttoxeter"],
-      "screens": [
-        {"image": "bitmap/mtt.png"},
-        {"image": "bitmap/journeywise.png", "seconds": 5}
-      ]
+    "X12": {
+      "route": "X12",
+      "destinations": {
+        "Burton":["bitmap/destinations/X12/burton/X12-Burton-only.png"],
+        "Lichfield":["bitmap/destinations/X12/burton/X12-Lichfield-only.png"],
+        "Sutton Coldfield":["bitmap/destinations/X12/burton/X12-Sutton-Coldfield-only.png"],
+        "Lichfield then Sutton Coldfield":["bitmap/destinations/X12/lichfield/X12-Lichfield-then-sutton.png"],
+        "Lichfield then Sutton Burton":["bitmap/destinations/X12/lichfield/X12-Lichfield-then-burton.png"]
+      }
     }
   }
 }
