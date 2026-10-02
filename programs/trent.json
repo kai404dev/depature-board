@@ -1,0 +1,42 @@
+{
+  "rotate_seconds": 5,
+  "image_fit": "fit",
+  "colour": "#ff8000",
+  "programs": {
+    "000": {
+      "route": "000",
+      "code": "0",
+      "destinations": {
+        "nis":["bitmap/destinations/000/not-in-service.png"],
+        "learner":["bitmap/destinations/000/learner.png"]
+      }
+    },
+    "igo": {
+      "route": "igo",
+      "code": "001",
+      "colour": "full",
+      "destinations": {
+        "Derby":["bitmap/destinations/trent/igo/igo-derby-1.png", "bitmap/destinations/igo/igo-indigo.png"],
+        "Nottingham":["bitmap/destinations/trent/igo/igo-nottingham-1.png", "bitmap/destinations/igo/igo-indigo.png"]
+      }
+    },
+    "i4": {
+      "route": "i4",
+      "code": "002",
+      "colour": "full",
+      "destinations": {
+        "Derby":["bitmap/destinations/trent/i4/i4-derby.png"],
+        "Nottingham":["bitmap/destinations/trent/i4/i4-nottingham.png"]
+      }
+    },
+    "ml": {
+      "route": "ml",
+      "code": "003",
+      "colour": "full",
+      "destinations": {
+        "Radcliffe":["bitmap/destinations/trent/mainline/ml-radcliffe.png", "bitmap/destinations/trent/mainline/ml-mainline.png"],
+        "Nottingham":["bitmap/destinations/trent/mainline/ml-nottingham.png", "bitmap/destinations/trent/mainline/ml-mainline.png"]
+      }
+    }
+  }
+}
