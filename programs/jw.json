@@ -13,7 +13,7 @@
         "learner": [
           "bitmap/destinations/000/learner.png"
         ],
-        "JourneyWise": {"colour": "full", "image": [
+        "JourneyWise": {"colour": "full", "images": [
           "bitmap/destinations/logos/journeywise.png"
         ]}
       }
