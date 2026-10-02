@@ -40,11 +40,14 @@ any default):
 ("color" also accepted.) Colour cascades screen -> destination ->
 route (programme) -> file default; a screen's own colour wins, then
 its destination's, then its route's, then the file default. "full"
-at any level switches tinting off for everything below it.
+at any level switches tinting off for everything below it. "RGB"
+(also "rainbow") at any level paints lit pixels as a scrolling
+rainbow instead: hue runs left-to-right across the panel and drifts
+with time, e.g. "colour": "RGB".
 
 Each image is a path, or {"image": path, "seconds": N,
 "fit": fit|fill|stretch, "colour": "#ffbb00"} to override the dwell /
-fit / tint for that screen. Without --destination every destination
+fit / tint for that screen (colour also takes "full" / "RGB"). Without --destination every destination
 plays in file order; with it, only that destination's screens play.
 Defaults cascade: screen -> programme -> file -> built-in (10s, fit).
 
@@ -71,7 +74,7 @@ import time
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, THIS_DIR)
 
-from images import dim_frame, load_frame, tint_frame
+from images import dim_frame, load_frame, rainbow_frame, tint_frame
 
 DEFAULT_ROTATE = 10
 DEFAULT_FIT = "fit"
@@ -104,8 +107,9 @@ def load_programs_file(path):
 
 
 def parse_colour(v, prog_name, label):
-    """Colour value: #rrggbb (or #rgb), or "full" for the image's own
-    colours (explicitly no tint). None when unset."""
+    """Colour value: #rrggbb (or #rgb), "full" for the image's own
+    colours (explicitly no tint), or "RGB" for a scrolling rainbow
+    (hue runs left-to-right and drifts with time). None when unset."""
     if v is None:
         return None
     s = str(v).strip()
@@ -113,18 +117,22 @@ def parse_colour(v, prog_name, label):
         s = s[1:]
     if s.lower() == "full":
         return "full"
+    if s.lower() in ("rgb", "rainbow"):
+        return "rgb"
     if len(s) == 3:
         s = "".join(c * 2 for c in s)
     if len(s) != 6 or any(c not in "0123456789abcdefABCDEF"
                            for c in s):
         sys.exit(f"program '{prog_name}' {label}: colour must be "
-                 f"#rrggbb or \"full\", got '{v}'")
+                  f"#rrggbb, \"full\" or \"RGB\", got '{v}'")
     return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
 
 
 def colour_str(rgb):
     if rgb == "full":
         return "full"
+    if rgb == "rgb":
+        return "RGB"
     return "#%02x%02x%02x" % rgb
 
 
@@ -294,10 +302,18 @@ def run_program(args, prog, watch=None):
     frames = []
     for s in prog["screens"]:
         sw, sh, frame = load_frame(s["image"], W, H, s["fit"])
-        if isinstance(s.get("colour"), tuple):
-            frame = tint_frame(frame, s["colour"])
-        frame = dim_frame(frame, args.image_dim)
-        frames.append((s, frame))
+        if s.get("colour") == "rgb":
+            # keep the untinted base: each tick repaints it as a
+            # scrolling rainbow, then dims (dim bakes in below).
+            base = frame
+            frame = dim_frame(rainbow_frame(base, W, H, 0.0),
+                              args.image_dim)
+            frames.append((s, frame, base))
+        else:
+            if isinstance(s.get("colour"), tuple):
+                frame = tint_frame(frame, s["colour"])
+            frame = dim_frame(frame, args.image_dim)
+            frames.append((s, frame, None))
         tag = f" [{s['destination']}]" if s.get("destination") else ""
         if s.get("colour"):
             tag += f" {colour_str(s['colour'])}"
@@ -318,26 +334,44 @@ def run_program(args, prog, watch=None):
 
     idx = 0
     idx_since = time.time()
+    t0 = idx_since  # rainbow clock: hue drifts from programme start
     shown = None
+    last_rgb = None
     while True:
         now = time.time()
         if len(frames) > 1 and \
                 now - idx_since >= frames[idx % len(frames)][0]["seconds"]:
             idx = (idx + 1) % len(frames)
             idx_since = now
-        # static screens are drawn once: rewriting an identical
-        # buffer every cycle just burns CPU and can judder the
-        # refresh, which reads as flicker.
-        if shown != idx % len(frames):
+        s, frame, base = frames[idx % len(frames)]
+        is_rgb = base is not None
+        if is_rgb and not args.once:
+            # animated rainbow: repaint hue each tick (~20fps).
+            # Flicker note: unlike static screens this must rewrite
+            # the buffer; 0.05s keeps motion smooth without hogging.
+            frame = dim_frame(rainbow_frame(base, W, H, now - t0),
+                              args.image_dim)
             offscreen.Fill(0, 0, 0)
-            blit(frames[idx % len(frames)][1])
+            blit(frame)
             offscreen = matrix.SwapOnVSync(offscreen)
             shown = idx % len(frames)
+            last_rgb = now
+        else:
+            # static screens are drawn once: rewriting an identical
+            # buffer every cycle just burns CPU and can judder the
+            # refresh, which reads as flicker.
+            if shown != idx % len(frames) or \
+                    (is_rgb and last_rgb is None):
+                offscreen.Fill(0, 0, 0)
+                blit(frame)
+                offscreen = matrix.SwapOnVSync(offscreen)
+                shown = idx % len(frames)
+                last_rgb = now if is_rgb else None
         if args.once:
             break
         if watch is not None and watch():
             break
-        time.sleep(0.5)
+        time.sleep(0.05 if is_rgb else 0.5)
 
 
 def read_control(path):

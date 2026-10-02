@@ -260,6 +260,56 @@ def dim_frame(frame, pct):
     return out
 
 
+def hsv_to_rgb(h, s=1.0, v=1.0):
+    """HSV (h 0-360, s/v 0-1) -> (r, g, b) 0-255. Stdlib, no imports."""
+    h = float(h) % 360.0
+    s = max(0.0, min(1.0, float(s)))
+    v = max(0.0, min(1.0, float(v)))
+    c = v * s
+    x = c * (1 - abs((h / 60.0) % 2 - 1))
+    m = v - c
+    if h < 60:
+        r1, g1, b1 = c, x, 0.0
+    elif h < 120:
+        r1, g1, b1 = x, c, 0.0
+    elif h < 180:
+        r1, g1, b1 = 0.0, c, x
+    elif h < 240:
+        r1, g1, b1 = 0.0, x, c
+    elif h < 300:
+        r1, g1, b1 = x, 0.0, c
+    else:
+        r1, g1, b1 = c, 0.0, x
+    return (int(round((r1 + m) * 255)),
+            int(round((g1 + m) * 255)),
+            int(round((b1 + m) * 255)))
+
+
+RAINBOW_DEG_PER_SEC = 60.0  # hue drift: full cycle every 6s
+
+
+def rainbow_frame(base, W, H, t):
+    """Scrolling rainbow version of a frame.
+
+    Any pixel brighter than background (same LIT_AT floor as
+    tint_frame) becomes a full-saturation hue from its x position,
+    drifting with time t (seconds): hue = x/W * 360 + t * speed.
+    Pass the decoded (untinted) panel-sized frame; dim afterwards
+    with dim_frame if needed."""
+    out = bytearray(len(base))
+    for y in range(H):
+        for x in range(W):
+            o = (y * W + x) * 3
+            lum = (299 * base[o] + 587 * base[o + 1] +
+                   114 * base[o + 2] + 500) // 1000
+            if lum >= LIT_AT:
+                hue = ((x / max(1, W)) * 360.0 +
+                       t * RAINBOW_DEG_PER_SEC) % 360.0
+                r, g, b = hsv_to_rgb(hue)
+                out[o], out[o + 1], out[o + 2] = r, g, b
+    return out
+
+
 def describe_images(paths):
     """Decode (no scaling) to report dimensions. Returns [(path, w, h)]."""
     out = []
