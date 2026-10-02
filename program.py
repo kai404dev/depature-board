@@ -24,7 +24,8 @@ programs.json:
 
 Colour override: any destination (or screen) takes "colour":
 "#ffbb00", multiply-tinted onto the image so black stays black and
-bright pixels take the colour:
+bright pixels take the colour. "colour": "full" keeps the image's
+own full colours instead (explicitly no tint, beating any default):
 
       "401": {
         "route": "401",
@@ -37,7 +38,8 @@ bright pixels take the colour:
 
 ("color" also accepted.) Colour cascades screen -> destination ->
 route (programme) -> file default; a screen's own colour wins, then
-its destination's, then its route's, then the file default.
+its destination's, then its route's, then the file default. "full"
+at any level switches tinting off for everything below it.
 
 Each image is a path, or {"image": path, "seconds": N,
 "fit": fit|fill|stretch, "colour": "#ffbb00"} to override the dwell /
@@ -101,21 +103,27 @@ def load_programs_file(path):
 
 
 def parse_colour(v, prog_name, label):
+    """Colour value: #rrggbb (or #rgb), or "full" for the image's own
+    colours (explicitly no tint). None when unset."""
     if v is None:
         return None
     s = str(v).strip()
     if s.startswith("#"):
         s = s[1:]
+    if s.lower() == "full":
+        return "full"
     if len(s) == 3:
         s = "".join(c * 2 for c in s)
     if len(s) != 6 or any(c not in "0123456789abcdefABCDEF"
                            for c in s):
         sys.exit(f"program '{prog_name}' {label}: colour must be "
-                 f"#rrggbb, got '{v}'")
+                 f"#rrggbb or \"full\", got '{v}'")
     return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
 
 
 def colour_str(rgb):
+    if rgb == "full":
+        return "full"
     return "#%02x%02x%02x" % rgb
 
 
@@ -170,7 +178,9 @@ def parse_screen(s, prog_name, label, pRotate, pFit, dColour):
         sys.exit(f"program '{prog_name}' {label}: fit must be one "
                  f"of {FITS}")
     colour = parse_colour(s.get("colour", s.get("color")), prog_name,
-                           label) or dColour
+                           label)
+    if colour is None:
+        colour = dColour
     return {"image": str(s["image"]).strip(),
             "seconds": sec, "fit": fit, "colour": colour}
 
@@ -198,7 +208,9 @@ def resolve_program(data, progs, gRotate, gFit, gColour, name,
     if pFit not in FITS:
         sys.exit(f"program '{name}': image_fit must be one of {FITS}")
     pColour = parse_colour(raw.get("colour", raw.get("color")),
-                           name, "route colour") or gColour
+                           name, "route colour")
+    if pColour is None:
+        pColour = gColour
     dests_raw = raw.get("destinations", [])
     pairs = []  # (destination, colour, screen entry), file order
     if isinstance(dests_raw, dict):
@@ -281,7 +293,7 @@ def run_program(args, prog, watch=None):
     frames = []
     for s in prog["screens"]:
         sw, sh, frame = load_frame(s["image"], W, H, s["fit"])
-        if s.get("colour"):
+        if isinstance(s.get("colour"), tuple):
             frame = tint_frame(frame, s["colour"])
         frames.append((s, frame))
         tag = f" [{s['destination']}]" if s.get("destination") else ""
