@@ -466,7 +466,7 @@ display:flex;flex-direction:column;align-items:center;gap:14px;min-height:100vh}
 body::-webkit-scrollbar{width:10px}
 body::-webkit-scrollbar-thumb{background:#333;border-radius:5px}
 /* ---- unit ---- */
-.unit{width:820px;max-width:98vw;border-radius:44px;padding:13px;
+.unit{width:100%;max-width:98vw;border-radius:44px;padding:13px;
 background:linear-gradient(#3a3f45,#0b0c0e 40%,#000);
 box-shadow:0 34px 70px rgba(0,0,0,.85),0 6px 16px rgba(0,0,0,.9)}
 .face{position:relative;border-radius:32px;padding:26px 30px 26px;
