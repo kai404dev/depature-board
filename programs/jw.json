@@ -367,6 +367,191 @@
           "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ]
       }
+    },
+    "5A": {
+      "colour": "full",
+      "route": "5A",
+      "code": "501",
+      "destinations": {
+        "Derby": [
+          "bitmap/destinations/journeywise/the fives/5a/5a-derby-1.png",
+          "bitmap/destinations/journeywise/the fives/5a/5a-derby-2.png",
+          "bitmap/destinations/journeywise/the fives/5a/5a-derby-3.png",
+          "bitmap/destinations/journeywise/the fives/5a/5a-the-fives.png"
+        ],
+        "Ilkeston": [
+          "bitmap/destinations/journeywise/the fives/5a/5a-ilkeston-1.png",
+          "bitmap/destinations/journeywise/the fives/5a/5a-ilkeston-2.png",
+          "bitmap/destinations/journeywise/the fives/5a/5a-ilkeston-3.png",
+          "bitmap/destinations/journeywise/the fives/5a/5a-the-fives.png"
+        ]
+      }
+    },
+    "5B": {
+      "colour": "full",
+      "route": "5B",
+      "code": "502",
+      "destinations": {
+        "Ilkeston": [
+          "bitmap/destinations/journeywise/the fives/5b/5b-ilkeston-1.png",
+          "bitmap/destinations/journeywise/the fives/5b/5b-ilkeston-2.png",
+          "bitmap/destinations/journeywise/the fives/5b/5b-ilkeston-3.png"
+        ],
+        "Nottingham": [
+          "bitmap/destinations/journeywise/the fives/5b/5b-nottingham-1.png",
+          "bitmap/destinations/journeywise/the fives/5b/5b-nottingham-2.png",
+          "bitmap/destinations/journeywise/the fives/5b/5b-nottingham-3.png"
+        ]
+      }
+    },
+    "8A": {
+      "colour": "full",
+      "route": "8A",
+      "code": "801",
+      "destinations": {
+        "Bakewell": [
+          "bitmap/destinations/journeywise/the eights/8a/8a-bakewell-1.png",
+          "bitmap/destinations/journeywise/the eights/8a/8a-bakewell-2.png",
+          "bitmap/destinations/journeywise/the eights/8a/8a-bakewell-3.png",
+          "bitmap/destinations/journeywise/the eights/8a/8a-bakewell-4.png",
+          "bitmap/destinations/journeywise/the eights/8a/8a-bakewell-5.png",
+          "bitmap/destinations/journeywise/the eights/8a/8a-the-eights.png"
+        ],
+        "Derby": [
+          "bitmap/destinations/journeywise/the eights/8a/8a-derby-1.png",
+          "bitmap/destinations/journeywise/the eights/8a/8a-derby-2.png",
+          "bitmap/destinations/journeywise/the eights/8a/8a-derby-3.png",
+          "bitmap/destinations/journeywise/the eights/8a/8a-derby-4.png",
+          "bitmap/destinations/journeywise/the eights/8a/8a-derby-5.png",
+          "bitmap/destinations/journeywise/the eights/8a/8a-the-eights.png"
+        ]
+      }
+    },
+    "8B": {
+      "colour": "full",
+      "route": "8B",
+      "code": "802",
+      "destinations": {
+        "Bakewell": [
+          "bitmap/destinations/journeywise/the eights/8b/8b-bakewell-1.png",
+          "bitmap/destinations/journeywise/the eights/8b/8b-bakewell-2.png",
+          "bitmap/destinations/journeywise/the eights/8b/8b-bakewell-3.png",
+          "bitmap/destinations/journeywise/the eights/8b/8b-bakewell-4.png",
+          "bitmap/destinations/journeywise/the eights/8b/8b-the-eights.png"
+        ],
+        "Derby": [
+          "bitmap/destinations/journeywise/the eights/8b/8b-derby-1.png",
+          "bitmap/destinations/journeywise/the eights/8b/8b-derby-2.png",
+          "bitmap/destinations/journeywise/the eights/8b/8b-derby-3.png",
+          "bitmap/destinations/journeywise/the eights/8b/8b-derby-4.png",
+          "bitmap/destinations/journeywise/the eights/8b/8b-the-eights.png"
+        ]
+      }
+    },
+    "11A": {
+      "colour": "full",
+      "route": "11A",
+      "code": "511",
+      "destinations": {
+        "Buxton": [
+          "bitmap/destinations/journeywise/the peaks/11a/11a-buxton.png",
+          "bitmap/destinations/journeywise/the peaks/11a/11a-the-peaks.png"
+        ],
+        "Chesterfield": [
+          "bitmap/destinations/journeywise/the peaks/11a/11a-chesterfield.png",
+          "bitmap/destinations/journeywise/the peaks/11a/11a-the-peaks.png"
+        ]
+      }
+    },
+    "11B": {
+      "colour": "full",
+      "route": "11B",
+      "code": "512",
+      "destinations": {
+        "Buxton": [
+          "bitmap/destinations/journeywise/the peaks/11b/11b-buxton.png",
+          "bitmap/destinations/journeywise/the peaks/11b/11b-the-peaks.png"
+        ],
+        "Leek": [
+          "bitmap/destinations/journeywise/the peaks/11b/11b-leak.png",
+          "bitmap/destinations/journeywise/the peaks/11b/11b-the-peaks.png"
+        ]
+      }
+    },
+    "11C": {
+      "colour": "full",
+      "route": "11C",
+      "code": "513",
+      "destinations": {
+        "Buxton": [
+          "bitmap/destinations/journeywise/the peaks/11c/11c-buxton.png",
+          "bitmap/destinations/journeywise/the peaks/11c/11c-the-peaks.png"
+        ],
+        "Macclesfield": [
+          "bitmap/destinations/journeywise/the peaks/11c/11c-macclesfield.png",
+          "bitmap/destinations/journeywise/the peaks/11c/11c-the-peaks.png"
+        ]
+      }
+    },
+    "12A": {
+      "colour": "full",
+      "route": "12A",
+      "code": "521",
+      "destinations": {
+        "Leek": [
+          "bitmap/destinations/journeywise/the peaks/12a/12a-leak.png",
+          "bitmap/destinations/journeywise/the peaks/12a/12a-the-peaks.png"
+        ],
+        "Macclesfield": [
+          "bitmap/destinations/journeywise/the peaks/12a/12a-macclesfield.png",
+          "bitmap/destinations/journeywise/the peaks/12a/12a-the-peaks.png"
+        ]
+      }
+    },
+    "12B": {
+      "colour": "full",
+      "route": "12B",
+      "code": "522",
+      "destinations": {
+        "Bakewell": [
+          "bitmap/destinations/journeywise/the peaks/12b/12b-bakewell.png",
+          "bitmap/destinations/journeywise/the peaks/12b/12b-the-peaks.png"
+        ],
+        "Sheffield": [
+          "bitmap/destinations/journeywise/the peaks/12b/12b-sheffield.png",
+          "bitmap/destinations/journeywise/the peaks/12b/12b-the-peaks.png"
+        ]
+      }
+    },
+    "12C": {
+      "colour": "full",
+      "route": "12C",
+      "code": "523",
+      "destinations": {
+        "Buxton": [
+          "bitmap/destinations/journeywise/the peaks/12c/12c-buxton.png",
+          "bitmap/destinations/journeywise/the peaks/12c/12c-the-peaks.png"
+        ],
+        "Sheffield": [
+          "bitmap/destinations/journeywise/the peaks/12c/12c-sheffield.png",
+          "bitmap/destinations/journeywise/the peaks/12c/12c-the-peaks.png"
+        ]
+      }
+    },
+    "700": {
+      "colour": "full",
+      "route": "700",
+      "code": "700",
+      "destinations": {
+        "Leicester": [
+          "bitmap/destinations/journeywise/first class/700/700-leicester.png",
+          "bitmap/destinations/journeywise/first class/700/700-first-class.png"
+        ],
+        "Peterborough": [
+          "bitmap/destinations/journeywise/first class/700/700-peterborough.png",
+          "bitmap/destinations/journeywise/first class/700/700-first-class.png"
+        ]
+      }
     }
   }
 }
