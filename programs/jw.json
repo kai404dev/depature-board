@@ -274,6 +274,7 @@
       "destinations": {
         "Burton": [
           "bitmap/destinations/journeywise/X2/X2-burton.png",
+          "bitmap/destinations/journeywise/Shared/xpress-connect.png"
         ],
         "Lichfield": [
           "bitmap/destinations/journeywise/X2/X2-lichfield.png",
