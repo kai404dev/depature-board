@@ -101,12 +101,57 @@
         ]
       }
     },
+    "10": {
+      "route": "10",
+      "destinations": {
+        "Acorn Inn": [
+          "bitmap/destinations/midlandclassic/10/10-acorn-inn.png"
+        ],
+        "Burton": [
+          "bitmap/destinations/midlandclassic/10/10-burton.png"
+        ]
+      }
+    },
+    "11": {
+      "route": "11",
+      "destinations": {
+        "Anglesey Road": [
+          "bitmap/destinations/midlandclassic/11/11-anglesey-road.png"
+        ],
+        "Burton": [
+          "bitmap/destinations/midlandclassic/11/11-burton.png"
+        ]
+      }
+    },
     "000": {
       "route": "000",
       "code": "0",
       "destinations": {
         "Not in Service": [
           "bitmap/destinations/midlandclassic/other/mdcl.png"
+        ]
+      }
+    },
+    "X12": {
+      "route": "X12",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/X12/X12-burton.png",
+          "bitmap/destinations/midlandclassic/X12/X12-flyer.png"
+        ],
+        "Lichfield - only": [
+          "bitmap/destinations/midlandclassic/X12/X12-lichfield.png",
+          "bitmap/destinations/midlandclassic/X12/X12-lichfield-only.png",
+          "bitmap/destinations/midlandclassic/X12/X12-flyer.png"
+        ],
+        "Lichfield - then sutton": [
+          "bitmap/destinations/midlandclassic/X12/X12-lichfield.png",
+          "bitmap/destinations/midlandclassic/X12/X12-lichfield-then-sutton.png",
+          "bitmap/destinations/midlandclassic/X12/X12-flyer.png"
+        ],
+        "Lichfield - then buton": [
+          "bitmap/destinations/midlandclassic/X12/X12-lichfield-then-buton.png",
+          "bitmap/destinations/midlandclassic/X12/X12-flyer.png"
         ]
       }
     }

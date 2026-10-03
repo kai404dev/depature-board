@@ -1,12 +1,14 @@
 [X] | 1 Burton - Rolleston - Tutbury
 [X] | 2 Burton - Edge Hill
 [X] | 3 Burton - Winshill
-[] | 4 Midway - Swadlincote - Newhall - Stanton - Burton
-[] | 8 Swadlincote - Burton - Queens Hospital
-[] | 9 Burton - Swadlincote - Ashby - East Midlands Airport
-[] | 009 Sudbury Park - Doveridge - Queen Elizabeths Grammar School
-[] | 10 Burton - Rough Hay
-[] | 11 Burton - Anglesey Road
+[X] | 4 Midway - Swadlincote - Newhall - Stanton - Burton
+[X] | 8 Swadlincote - Burton - Queens Hospital
+[X] | 9 Burton - Swadlincote - Ashby - East Midlands Airport
+[X] | 009 Sudbury Park - Doveridge - Queen Elizabeths Grammar School
+[X] | 10 Burton - Rough Hay
+[X] | 11 Burton - Anglesey Road
+[X] | X12 Burton - Lichfield - Sutton Coldfield
+[] | 12E Burton - Lichfield
 [] | 12 Burton - Barton - Alrewas - Lichfield
 [X] | 17 Burton - Clay Mills
 [] | 18 Burton - Dalebrook Estate
