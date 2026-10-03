@@ -67,6 +67,7 @@ class BDF:
         self.name = os.path.basename(path)
         self.glyphs = {}  # enc -> (dwidth, w, h, xoff, yoff, [rowbits])
         self.bbox_w = 0
+        self.bbox_h = 0
         self.space_w = 0
         self._parse()
 
@@ -82,6 +83,7 @@ class BDF:
                 if tag == "FONTBOUNDINGBOX" and len(p) >= 3:
                     try:
                         self.bbox_w = int(p[1])
+                        self.bbox_h = int(p[2])
                     except ValueError:
                         pass
                 elif tag == "ENCODING" and len(p) >= 2:
@@ -316,6 +318,72 @@ def place_centered(cell, adv, ink):
     return ox, baseline
 
 
+def place_centered_x(cell, adv, ix0, ix1):
+    """Horizontal origin centring ink (or advance) inside cell."""
+    cx0, _cy0, cx1, _cy1 = cell
+    ccx = (cx0 + cx1) // 2
+    if ix0 is None:
+        return cx0 + max(0, (cx1 - cx0 + 1 - adv) // 2)
+    return ccx - (ix0 + ix1 + 1) // 2
+
+
+def field_advance(font, text, scale):
+    """Advance width; for multi-line text the widest line wins."""
+    if "\n" not in text:
+        return font.text_advance(text) * max(1, int(scale))
+    return max([font.text_advance(ln) for ln in text.split("\n")]
+               + [0]) * max(1, int(scale))
+
+
+def stamp_multiline(frame, font, text, cell, scale, fg, warnings, name,
+                    dx=0, dy=0):
+    """Draw multi-line text stacked in cell. Returns (lit, missing,
+    first_origin). Lines are centred as a block on the cell centre
+    with a line pitch of one glyph box."""
+    scale = max(1, int(scale))
+    lines = text.split("\n")
+    pitch = (font.bbox_h or 20) * scale
+    ccx = (cell[0] + cell[2]) // 2
+    ccy = (cell[1] + cell[3]) // 2
+    top = ccy - len(lines) * pitch // 2
+    lit_total = 0
+    missing = []
+    first_origin = None
+    tall_warned = False
+    last_base = None
+    for i, ln in enumerate(lines):
+        _adv, ix0, iy0, ix1, iy1 = text_ink(font, ln, scale)
+        adv = font.text_advance(ln) * scale
+        wide = adv - (cell[2] - cell[0] + 1)
+        if wide > 0:
+            warnings.append(f"{name} too wide by {wide}px in this "
+                            f"style -- smaller font/scale or fewer "
+                            f"characters")
+        if ix0 is None:
+            ox = cell[0] + max(0, (cell[2] - cell[0] + 1 - adv) // 2)
+            base = last_base + pitch if last_base is not None \
+                else top + pitch
+        else:
+            ox = ccx - (ix0 + ix1 + 1) // 2 + dx
+            base = top + i * pitch - iy0 + dy
+            if first_origin is None:
+                first_origin = (ox, base)
+            if not tall_warned and (base + iy0 < 0
+                                    or base + iy1 >= H):
+                warnings.append(f"{name} taller than the 40px panel "
+                                f"-- clipped top/bottom")
+                tall_warned = True
+        lit, miss = stamp(frame, font, ln, ox, base, scale, fg)
+        lit_total += lit
+        for m in miss:
+            if m not in missing:
+                missing.append(m)
+        last_base = base
+    if first_origin is None:
+        first_origin = (cell[0], ccy)
+    return lit_total, missing, first_origin
+
+
 def job_geometry(job):
     """Clamped (gap, pad, via_fraction) shared by every renderer."""
     try:
@@ -422,17 +490,31 @@ def render(job):
     fg = parse_colour(job.get("fg", job.get("colour",
                                             DEFAULTS["fg"])))
     gap, pad, vfract = job_geometry(job)
+    try:
+        dx = max(-80, min(80, int(job.get("dx", 0) or 0)))
+    except (TypeError, ValueError):
+        dx = 0
+    try:
+        dy = max(-80, min(80, int(job.get("dy", 0) or 0)))
+    except (TypeError, ValueError):
+        dy = 0
 
     frame = bytearray(W * H * 3)
     warnings = []
     fields = {}
 
-    r_adv, r_x0, r_y0, r_x1, r_y1 = text_ink(rf, route, rs) \
-        if route else (0, None, None, None, None)
-    d_adv, d_x0, d_y0, d_x1, d_y1 = text_ink(df, dest, ds) \
-        if dest else (0, None, None, None, None)
-    v_adv, v_x0, v_y0, v_x1, v_y1 = text_ink(vf, via, vs) \
-        if via else (0, None, None, None, None)
+    def _adv_ink(font, text, scale):
+        if not text:
+            return 0, (None, None, None, None)
+        if "\n" in text:
+            return field_advance(font, text, scale), \
+                (None, None, None, None)
+        _a, _x0, _y0, _x1, _y1 = text_ink(font, text, scale)
+        return _a, (_x0, _y0, _x1, _y1)
+
+    r_adv, (r_x0, r_y0, r_x1, r_y1) = _adv_ink(rf, route, rs)
+    d_adv, (d_x0, d_y0, d_x1, d_y1) = _adv_ink(df, dest, ds)
+    v_adv, (v_x0, v_y0, v_x1, v_y1) = _adv_ink(vf, via, vs)
 
     route_cell, job_cells, route_over = layout_cells(
         route, dest, via, r_adv, d_adv, v_adv, style, gap, pad, vfract)
@@ -444,17 +526,39 @@ def render(job):
             "dest": (df, dest, ds, (d_x0, d_y0, d_x1, d_y1)),
             "via": (vf, via, vs, (v_x0, v_y0, v_x1, v_y1))}
     adv_of = {"route": r_adv, "dest": d_adv, "via": v_adv}
+    off = job.get("offsets")
+    off = off if isinstance(off, dict) else {}
+
+    def _off(name):
+        v = off.get(name, [0, 0])
+        try:
+            x, y = int(v[0]), int(v[1])
+        except (TypeError, ValueError, IndexError):
+            x, y = 0, 0
+        return max(-80, min(80, x)), max(-80, min(80, y))
+
     missing = set()
     ordered = job_cells + ([("route", route_cell)] if route else [])
     for name, cell in ordered:
         font, text, scale, ink = pick[name]
         adv = adv_of[name]
+        fdx, fdy = _off(name)
+        if "\n" in text:
+            lit, miss, origin = stamp_multiline(
+                frame, font, text, cell, scale, fg, warnings, name,
+                dx + fdx, dy + fdy)
+            fields[name] = {"advance": adv, "lit": lit,
+                            "cell": list(cell), "origin": list(origin)}
+            missing.update(miss)
+            continue
         wide = adv - (cell[2] - cell[0] + 1)
         if wide > 0:
             warnings.append(f"{name} too wide by {wide}px in this "
                             f"style -- smaller font/scale or fewer "
                             f"characters")
         ox, baseline = place_centered(cell, adv, ink)
+        ox += dx + fdx
+        baseline += dy + fdy
         lit, miss = stamp(frame, font, text, ox, baseline, scale, fg)
         fields[name] = {"advance": adv, "lit": lit,
                         "cell": list(cell), "origin": [ox, baseline]}

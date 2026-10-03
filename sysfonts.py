@@ -126,27 +126,54 @@ def render_system(eng, job, spec):
     route, dest, via = eng.normalize(job)
     gap, pad, vfract = eng.job_geometry(job)
     fg = eng.parse_colour(job.get("fg", eng.DEFAULTS["fg"]))
+    try:
+        dx = max(-80, min(80, int(job.get("dx", 0) or 0)))
+    except (TypeError, ValueError):
+        dx = 0
+    try:
+        dy = max(-80, min(80, int(job.get("dy", 0) or 0)))
+    except (TypeError, ValueError):
+        dy = 0
+    off = job.get("offsets")
+    off = off if isinstance(off, dict) else {}
+
+    def _off(name):
+        v = off.get(name, [0, 0])
+        try:
+            x, y = int(v[0]), int(v[1])
+        except (TypeError, ValueError, IndexError):
+            x, y = 0, 0
+        return max(-80, min(80, x)), max(-80, min(80, y))
+
     warnings = []
     fields = {}
+    texts = {"route": route, "dest": dest, "via": via}
 
-    # rasterize each line at 4x on its own scratch canvas
-    ink = {}   # name -> (cropped_img, adv_1x) ; None when blank
-    advs = {}
-    for name, text in (("route", route), ("dest", dest), ("via", via)):
+    def raster(f4, line):
+        """One scratch render: (cropped ink image or None, adv_4x)."""
+        w = int(f4.getlength(line)) + 32
+        asc, desc = f4.getmetrics()
+        scratch = Image.new("1", (w, asc + desc + 32), 0)
+        ImageDraw.Draw(scratch).text((16, 16), line, font=f4, fill=1)
+        box = scratch.getbbox()
+        if not box:
+            return None, int(f4.getlength(line))
+        return scratch.crop(box), int(f4.getlength(line))
+
+    # advances first (multi-line fields claim their widest line), then
+    # layout, then raster -- single-line output is untouched by this
+    fonts, advs = {}, {}
+    for name, text in texts.items():
         if not text:
-            advs[name], ink[name] = 0, None
+            advs[name] = 0
             continue
         path, idx, px = spec[name]
         px = max(6, min(120, int(px)))
         f4 = cached_truetype(path, idx, px * SYS_SS)
         f1 = cached_truetype(path, idx, px)
-        advs[name] = max(1, int(math.ceil(f1.getlength(text))))
-        w = int(f4.getlength(text)) + 32
-        asc, desc = f4.getmetrics()
-        scratch = Image.new("1", (w, asc + desc + 32), 0)
-        ImageDraw.Draw(scratch).text((16, 16), text, font=f4, fill=1)
-        box = scratch.getbbox()
-        ink[name] = (scratch.crop(box), advs[name]) if box else None
+        fonts[name] = (f4, px)
+        advs[name] = max(1, int(math.ceil(max(
+            [f1.getlength(ln) for ln in text.split("\n")] + [0]))))
 
     route_cell, jobs, route_over = eng.layout_cells(
         route, dest, via, advs["route"], advs["dest"], advs["via"],
@@ -157,20 +184,48 @@ def render_system(eng, job, spec):
 
     main = Image.new("1", (eng.W * SYS_SS, eng.H * SYS_SS), 0)
     for name, cell in jobs + ([("route", route_cell)] if route else []):
+        text = texts[name]
+        f4, _px = fonts[name]
         cell4 = tuple(v * SYS_SS for v in cell)
         adv4 = advs[name] * SYS_SS
+        fdx, fdy = _off(name)
+        ox0, oy0 = (dx + fdx) * SYS_SS, (dy + fdy) * SYS_SS
         wide = advs[name] - (cell[2] - cell[0] + 1)
         if wide > 0:
             warnings.append(f"{name} too wide by {wide}px in this "
                             f"style -- smaller size or fewer characters")
-        if ink[name] is None:
+        lines = text.split("\n")
+        if len(lines) == 1:
+            crop, _adv4 = raster(f4, text)
+            if crop is None:
+                continue
+            ix1, iy1 = crop.size[0] - 1, crop.size[1] - 1
+            ox, oy = eng.place_centered(cell4, adv4, (0, 0, ix1, iy1))
+            ox += ox0
+            oy += oy0
+            main.paste(crop, (ox, oy))
+            fields[name] = {"advance": advs[name], "lit": 0,
+                            "cell": list(cell), "origin": [ox, oy]}
             continue
-        crop, _ = ink[name]
-        ix1, iy1 = crop.size[0] - 1, crop.size[1] - 1
-        ox, oy = eng.place_centered(cell4, adv4, (0, 0, ix1, iy1))
-        main.paste(crop, (ox, oy))
+        # multi-line: stack ink blocks on the cell centre
+        asc, desc = f4.getmetrics()
+        pitch = asc + desc
+        ccx = (cell4[0] + cell4[2]) // 2
+        ccy = (cell4[1] + cell4[3]) // 2
+        top = ccy - len(lines) * pitch // 2
+        first_origin = None
+        for i, ln in enumerate(lines):
+            crop, _adv4 = raster(f4, ln)
+            if crop is None:
+                continue
+            ox = ccx - crop.size[0] // 2 + ox0
+            oy = top + i * pitch + oy0
+            main.paste(crop, (ox, oy))
+            if first_origin is None:
+                first_origin = [ox, oy]
         fields[name] = {"advance": advs[name], "lit": 0,
-                        "cell": list(cell), "origin": [ox, oy]}
+                        "cell": list(cell),
+                        "origin": first_origin or [cell4[0], cell4[1]]}
 
     # snap the 4x render into 1-bit target pixels (note: mode "1"
     # pixels read back as 0/1, so the cut is 8 of 16 subpixels lit)
