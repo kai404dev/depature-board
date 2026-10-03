@@ -123,12 +123,88 @@
         ]
       }
     },
+    "12": {
+      "route": "12",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/12/12-burton-1.png",
+          "bitmap/destinations/midlandclassic/12/12-burton-2.png",
+          "bitmap/destinations/midlandclassic/12/12-burton-3.png"
+        ],
+        "Lichfield": [
+          "bitmap/destinations/midlandclassic/12/12-lichfield-1.png",
+          "bitmap/destinations/midlandclassic/12/12-lichfield-2.png",
+          "bitmap/destinations/midlandclassic/12/12-lichfield-3.png"
+        ]
+      }
+    },
+    "17": {
+      "route": "17",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/17/17-burton.png"
+        ],
+        "Stretton": [
+          "bitmap/destinations/midlandclassic/17/17-stretton.png"
+        ]
+      }
+    },
+    "18": {
+      "route": "18",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/18/18-burton.png"
+        ],
+        "Winshill": [
+          "bitmap/destinations/midlandclassic/18/18-winshill.png"
+        ]
+      }
+    },
+    "19": {
+      "route": "19",
+      "destinations": {
+        "Ashby": [
+          "bitmap/destinations/midlandclassic/19/19-ashby-1.png",
+          "bitmap/destinations/midlandclassic/19/19-ashby-2.png",
+          "bitmap/destinations/midlandclassic/19/19-ashby-3.png"
+        ],
+        "Burton": [
+          "bitmap/destinations/midlandclassic/19/19-burton-1.png",
+          "bitmap/destinations/midlandclassic/19/19-burton-2.png",
+          "bitmap/destinations/midlandclassic/19/19-burton-3.png"
+        ]
+      }
+    },
+    "20": {
+      "route": "20",
+      "destinations": {
+        "Mercia Park": [
+          "bitmap/destinations/midlandclassic/20/20-mercia-park-1.png",
+          "bitmap/destinations/midlandclassic/20/20-mercia-park-2.png",
+          "bitmap/destinations/midlandclassic/20/20-mercia-park-3.png"
+        ],
+        "Mile Oak": [
+          "bitmap/destinations/midlandclassic/20/20-mile-oak-1.png",
+          "bitmap/destinations/midlandclassic/20/20-mile-oak-2.png",
+          "bitmap/destinations/midlandclassic/20/20-mile-oak-3.png"
+        ],
+        "Tamworth": [
+          "bitmap/destinations/midlandclassic/20/20-tamworth.png"
+        ]
+      }
+    },
     "000": {
       "route": "000",
       "code": "0",
       "destinations": {
         "Not in Service": [
           "bitmap/destinations/midlandclassic/other/mdcl.png"
+        ],
+        "X12 Branding": [
+          "bitmap/destinations/midlandclassic/X12/X12-flyer.png"
+        ],
+        "9 Branding": [
+          "bitmap/destinations/midlandclassic/9/9-airway.png"
         ]
       }
     },
@@ -152,6 +228,19 @@
         "Lichfield - then buton": [
           "bitmap/destinations/midlandclassic/X12/X12-lichfield-then-buton.png",
           "bitmap/destinations/midlandclassic/X12/X12-flyer.png"
+        ]
+      }
+    },
+    "12e": {
+      "route": "12e",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/12e/12e-burton-1.png",
+          "bitmap/destinations/midlandclassic/12e/12e-burton-2.png"
+        ],
+        "Lichfield": [
+          "bitmap/destinations/midlandclassic/12e/12e-lichfield-1.png",
+          "bitmap/destinations/midlandclassic/12e/12e-lichfield-2.png"
         ]
       }
     }
