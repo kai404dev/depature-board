@@ -67,6 +67,110 @@ def read_file():
         return json.load(f)
 
 
+def resolve_preview_file(rel):
+    """Abspath for a programs/*.json rel path, or None when invalid."""
+    if not rel:
+        return PROGRAM_FILE
+    full = os.path.normpath(os.path.join(THIS_DIR, rel))
+    base = os.path.join(THIS_DIR, "programs")
+    if not full.startswith(base + os.sep) or \
+            not rel.lower().endswith(".json") or \
+            not os.path.isfile(full):
+        return None
+    return full
+
+
+def encode_png_rgb(W, H, frame):
+    """True-colour PNG bytes from an RGB bytearray (stdlib only)."""
+    import struct
+    import zlib
+    rows = [bytes(frame[y * W * 3:(y + 1) * W * 3]) for y in range(H)]
+
+    def chunk(t, d):
+        return (struct.pack(">I", len(d)) + t + d
+                + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff))
+
+    ihdr = struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0)
+    raw = b"".join(b"\x00" + r for r in rows)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(bytes(raw)))
+            + chunk(b"IEND", b""))
+
+
+def render_preview_png(path, program, dest, index, W, H, dim, fit, t):
+    """Render one programme screen as it appears on the panel.
+
+    Returns (png_bytes, meta) or raises SystemExit/ValueError with a
+    plain message. Applies the same fit/tint/dim/rainbow pipeline as
+    program.py's matrix loop (rainbow phase from t seconds).
+    """
+    from images import dim_frame, load_frame, rainbow_frame, tint_frame
+    data, progs, gRotate, gFit, gColour = model.load_programs_file(path)
+    prog = model.resolve_program(data, progs, gRotate, gFit, gColour,
+                                 program, dest or None, path)
+    screens = prog["screens"]
+    if not 0 <= index < len(screens):
+        raise ValueError(f"screen {index} out of range "
+                         f"(0-{len(screens) - 1})")
+    s = dict(screens[index])
+    if fit in model.FITS:
+        s["fit"] = fit
+    base = os.path.dirname(path)
+    img_path = s["image"]
+    full = img_path if os.path.isabs(img_path) else \
+        os.path.normpath(os.path.join(THIS_DIR, img_path))
+    if not full.startswith(THIS_DIR + os.sep):
+        # absolute program files resolve relative to their own dir
+        alt = os.path.normpath(os.path.join(base, img_path))
+        if alt.startswith(THIS_DIR + os.sep):
+            full = alt
+    _sw, _sh, frame = load_frame(full, W, H, s["fit"])
+    if s.get("colour") == "rgb":
+        frame = rainbow_frame(frame, W, H, t)
+    elif isinstance(s.get("colour"), tuple):
+        frame = tint_frame(frame, s["colour"])
+    frame = dim_frame(frame, dim)
+    meta = {"program": prog["name"], "route": prog["route"],
+            "destination": s.get("destination"),
+            "image": s["image"], "seconds": s["seconds"],
+            "fit": s["fit"],
+            "colour": model.colour_str(s["colour"])
+            if s.get("colour") else "",
+            "index": index, "count": len(screens)}
+    return encode_png_rgb(W, H, frame), meta
+
+
+def preview_data(path):
+    """JSON-able summary of every programme in a file for /preview."""
+    data, progs, gRotate, gFit, gColour = model.load_programs_file(path)
+    out = {}
+    for name in sorted(progs):
+        try:
+            prog = model.resolve_program(data, progs, gRotate, gFit,
+                                         gColour, name, None, path)
+        except SystemExit:
+            continue
+        raw = progs[name] if isinstance(progs[name], dict) else {}
+        try:
+            ids = dict(model.destination_ids(raw, name))
+        except SystemExit:
+            ids = {}
+        out[name] = {
+            "route": prog["route"],
+            "destinations": prog["destinations"],
+            "ids": ids,
+            "screens": [{
+                "destination": s.get("destination"),
+                "image": s["image"],
+                "seconds": s["seconds"],
+                "fit": s["fit"],
+                "colour": model.colour_str(s["colour"])
+                if s.get("colour") else "",
+            } for s in prog["screens"]],
+        }
+    return out
+
+
 def validate_data(data):
     """Validate posted programme data. Returns (ok, error, warnings).
 
@@ -254,7 +358,7 @@ code{color:#ffd27f}
 @media (max-width:1000px){.main{grid-template-columns:1fr}}
 </style></head><body>
 <div class="top">
-<h1>program editor</h1><select id="filesel" onchange="openFile()" title="program file"></select>
+<h1>program editor</h1><a href="/preview" style="color:#9ab;font-size:13px">preview →</a><select id="filesel" onchange="openFile()" title="program file"></select>
 <span class="file" id="file"></span>
 <button class="primary" onclick="save()">save</button>
 <span id="msg"></span>
@@ -557,6 +661,190 @@ load();
 """
 
 
+PREVIEW_PAGE = """<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>program preview</title>
+<style>
+*{box-sizing:border-box}
+body{background:#0c0d10;color:#e8e8ea;font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px}
+h1{font-size:20px;margin:0}
+.top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.top a{color:#9ab;font-size:13px}
+.panel{background:#15171c;border:1px solid #2a2e36;border-radius:12px;padding:12px;margin-bottom:14px}
+.row{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
+label{font-size:12px;color:#9ab;min-width:90px}
+select,input[type=text],input[type=number]{background:#0e1013;color:#fff;border:1px solid #454b56;border-radius:6px;padding:6px 8px;font-size:13px}
+input[type=range]{accent-color:#ffd27f}
+button{background:#22262e;color:#fff;border:1px solid #454b56;border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer}
+button.small{padding:3px 9px;font-size:12px}
+#msg{min-height:20px;font-size:13px;color:#ffd27f}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card{background:#15171c;border:1px solid #2a2e36;border-radius:12px;padding:10px}
+.card h2{font-size:14px;margin:0 0 8px;color:#ffd27f}
+.card h2 small{color:#9ab;font-weight:normal}
+.card img{width:100%;aspect-ratio:6/1;object-fit:contain;background:#000;border-radius:8px;border:1px solid #333;image-rendering:pixelated}
+.card .cap{font-size:12px;color:#9ab;margin-top:6px;word-break:break-all;min-height:30px}
+.card .pager{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:#9ab}
+.card .dots{letter-spacing:2px}
+small{color:#777}
+code{color:#ffd27f}
+</style></head><body>
+<div class="top">
+<h1>program preview</h1>
+<a href="/">← back to editor</a>
+<span id="msg"></span>
+</div>
+<div class="panel">
+<div class="row"><label>file</label><select id="file"></select></div>
+<div class="row"><label>program</label><select id="prog"></select></div>
+<div class="row"><label>panel</label><select id="size">
+<option value="240x40" selected>240x40 (80x3 chain)</option>
+<option value="160x32">160x32</option>
+<option value="128x32">128x32</option>
+<option value="64x32">64x32</option>
+</select>
+<label style="min-width:40px">dim</label><input type="range" id="dim" min="1" max="100" value="100"><span id="dimv">100%</span>
+<label style="min-width:40px">fit</label><select id="fit"><option value="">file</option><option>fit</option><option>fill</option><option>stretch</option></select>
+<button class="small" id="pp" onclick="togglePlay()">pause</button></div>
+<small>One card per destination — playing through its pages like the LEDs do, using each page's own seconds.</small>
+</div>
+<div class="grid" id="grid"></div>
+<script>
+let D=null,playing=true,state={};
+function say(t,err){const m=document.getElementById('msg');m.textContent=t||'';m.style.color=err?'#ff7b7b':'#ffd27f';}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function dims(){const v=document.getElementById('size').value.split('x');return{w:+v[0],h:+v[1]};}
+function togglePlay(){playing=!playing;document.getElementById('pp').textContent=playing?'pause':'play';}
+async function init(){
+ const fs=await (await fetch('/api/files')).json();
+ const sel=document.getElementById('file');
+ sel.innerHTML=(fs.files||[]).map(f=>`<option>${esc(f)}</option>`).join('');
+ const q=new URLSearchParams(location.search);
+ if(q.get('file')&&[...sel.options].some(o=>o.value===q.get('file')))sel.value=q.get('file');
+ sel.onchange=()=>load();
+ for(const id of ['prog','size','dim','fit'])document.getElementById(id).onchange=()=>render(true);
+ document.getElementById('dim').oninput=e=>{document.getElementById('dimv').textContent=e.target.value+'%';};
+ await load();
+ if(q.get('program')){document.getElementById('prog').value=q.get('program');render(true);}
+ setInterval(tick,250);
+}
+async function load(){
+ say('loading…');
+ try{
+  const r=await fetch('/api/preview-data?file='+encodeURIComponent(document.getElementById('file').value));
+  const j=await r.json();
+  if(!j.ok)return say(j.error||'load failed',true);
+  D=j;render(true);say('');
+ }catch(e){say('server unreachable',true);}
+}
+function pngURL(prog,idx){
+ const {w,h}=dims();
+ const p=new URLSearchParams({file:document.getElementById('file').value,
+  program:prog,i:String(idx),w:String(w),h:String(h),
+  dim:document.getElementById('dim').value,
+  fit:document.getElementById('fit').value,t:(Date.now()/1000).toString()});
+ return '/api/preview.png?'+p.toString();
+}
+function groupsFor(prog){
+ // destination -> [{s,i}] in play order (global screen index kept
+ // so /api/preview.png stays in sync with the matrix order).
+ const screens=D.programs[prog].screens;
+ const groups=new Map();
+ screens.forEach((s,i)=>{
+  const d=s.destination||'(all)';
+  if(!groups.has(d))groups.set(d,[]);
+  groups.get(d).push({s,i});
+ });
+ return groups;
+}
+function render(force){
+ if(!D||!D.ok)return;
+ const progs=Object.keys(D.programs);
+ const psel=document.getElementById('prog');
+ const keep=psel.value;
+ psel.innerHTML=progs.map(n=>{const p=D.programs[n];return `<option value="${esc(n)}">${esc(p.route===n?n:p.route+' ('+n+')')}</option>`;}).join('');
+ if(progs.includes(keep))psel.value=keep;
+ const prog=psel.value||progs[0];
+ if(prog)psel.value=prog;
+ if(!prog)return;
+ const groups=groupsFor(prog);
+ const grid=document.getElementById('grid');
+ const key=document.getElementById('file').value+'|'+prog+'|'+[...groups].map(([d,pgs])=>d+':'+pgs.length).join(',');
+ if(force||grid.dataset.key!==key){
+  grid.dataset.key=key;grid.innerHTML='';state={};
+  for(const [d,pgs] of groups){
+   const firstId=D.programs[prog].ids?.[d];
+   const sub=pgs.length>1?` <small>${pgs.length} pages</small>`:(firstId!==undefined?` <small>id ${esc(firstId)}</small>`:'');
+   const card=document.createElement('div');card.className='card';card.dataset.dest=d;
+   card.innerHTML=`<h2>${esc(d)}${sub}</h2><img alt=""><div class="cap"></div>`
+    +(pgs.length>1?`<div class="pager"><button class="small prev">‹</button><span class="dots"></span><span class="pos"></span><button class="small next">›</button></div>`:`<div class="pager"><span class="pos"></span></div>`);
+   grid.appendChild(card);
+   state[d]={pos:0,nextAt:Date.now()+(pgs[0].s.seconds*1000||0),loaded:-1};
+   if(pgs.length>1){
+    card.querySelector('.prev').onclick=()=>step(d,-1);
+    card.querySelector('.next').onclick=()=>step(d,1);
+   }
+  }
+ }
+ tick(true);
+}
+function step(d,dir){
+ const prog=document.getElementById('prog').value;
+ const pgs=groupsFor(prog).get(d);
+ if(!pgs)return;
+ const st=state[d];
+ st.pos=(st.pos+dir+pgs.length)%pgs.length;
+ st.nextAt=Date.now()+(pgs[st.pos].s.seconds*1000||0);
+ paint(true);
+}
+function paint(force){
+ const prog=document.getElementById('prog').value;
+ if(!prog||!D.programs[prog])return;
+ const groups=groupsFor(prog);
+ const {w,h}=dims();
+ for(const card of document.getElementById('grid').children){
+  const d=card.dataset.dest;
+  const pgs=groups.get(d);
+  if(!pgs)continue;
+  const st=state[d];
+  const {s,i}=pgs[st.pos];
+  const img=card.querySelector('img');
+  if(force||st.loaded!==i)img.src=pngURL(prog,i);
+  else if(s.colour==='RGB')img.src=pngURL(prog,i); // rainbow shimmer
+  st.loaded=i;
+  const dots=card.querySelector('.dots');
+  if(dots)dots.textContent=pgs.map((_,k)=>k===st.pos?'●':'○').join('');
+  card.querySelector('.pos').textContent=pgs.length>1?`page ${st.pos+1}/${pgs.length} · ${s.seconds}s`:`${s.seconds}s`;
+  card.querySelector('.cap').innerHTML=`${esc(s.image)}<br><code>${esc(s.fit)}${s.colour?' '+esc(s.colour):''}</code> ${w}x${h}`;
+ }
+}
+function tick(force){
+ if(!D||!D.ok)return;
+ const prog=document.getElementById('prog').value;
+ if(!prog||!D.programs[prog])return;
+ if(!playing&&!force)return;
+ const now=Date.now();
+ const groups=groupsFor(prog);
+ let moved=!!force;
+ for(const [d,pgs] of groups){
+  const st=state[d];
+  if(!st)continue;
+  if(st.loaded<0)moved=true;
+  if(pgs.length>1&&now>=st.nextAt){
+   st.pos=(st.pos+1)%pgs.length;
+   st.nextAt=now+(pgs[st.pos].s.seconds*1000||0);
+   moved=true;
+  }
+  if(pgs[st.pos].s.colour==='RGB')moved=true; // shimmer
+ }
+ if(moved)paint(force);
+}
+init();
+</script></body></html>
+"""
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "ProgramEditor/1.0"
 
@@ -589,6 +877,15 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in ("/", "/index.html"):
             return self._send(PAGE.replace(
                 "<title>", f"<!-- {esc(PROGRAM_FILE)} --><title>"))
+        if parsed.path == "/preview":
+            return self._send(PREVIEW_PAGE.replace(
+                "<title>", f"<!-- {esc(PROGRAM_FILE)} --><title>"))
+        if parsed.path == "/api/preview-data":
+            return self._preview_data(
+                urllib.parse.parse_qs(parsed.query))
+        if parsed.path == "/api/preview.png":
+            return self._preview_png(
+                urllib.parse.parse_qs(parsed.query))
         if parsed.path == "/api/data":
             try:
                 data = read_file()
@@ -622,6 +919,78 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 return self._send("not found", "text/plain", 404)
         return self._send("not found", "text/plain", 404)
+
+    def _preview_data(self, q):
+        rel = (q.get("file") or [""])[0]
+        path = resolve_preview_file(rel)
+        if path is None:
+            payload = json.dumps(
+                {"ok": False,
+                 "error": "file must be a programs/*.json file"}).encode()
+            return self._send(payload, "application/json", 400)
+        try:
+            programs = preview_data(path)
+        except SystemExit as e:
+            payload = json.dumps({"ok": False, "error": str(e)}).encode()
+            return self._send(payload, "application/json", 400)
+        payload = json.dumps({
+            "ok": True,
+            "file": path,
+            "rel": os.path.relpath(path, THIS_DIR),
+            "programs": programs}).encode()
+        return self._send(payload, "application/json")
+
+    def _preview_png(self, q):
+        rel = (q.get("file") or [""])[0]
+        path = resolve_preview_file(rel)
+        if path is None:
+            return self._send("bad file", "text/plain", 400)
+        program = (q.get("program") or [""])[0]
+        dest = (q.get("dest") or [""])[0] or None
+        try:
+            index = int((q.get("i") or q.get("index") or ["0"])[0])
+        except ValueError:
+            index = 0
+        try:
+            W = int((q.get("w") or ["240"])[0])
+            H = int((q.get("h") or ["40"])[0])
+        except ValueError:
+            W, H = 240, 40
+        W = max(32, min(512, W))
+        H = max(16, min(128, H))
+        try:
+            dim = int((q.get("dim") or ["100"])[0])
+        except ValueError:
+            dim = 100
+        dim = max(1, min(100, dim))
+        fit = (q.get("fit") or [""])[0] or None
+        if fit not in model.FITS:
+            fit = None
+        try:
+            t = float((q.get("t") or ["0"])[0])
+        except ValueError:
+            t = 0.0
+        try:
+            with _lock:
+                img, _meta = render_preview_png(
+                    path, program or None, dest, index, W, H,
+                    dim, fit, t)
+        except SystemExit as e:
+            return self._send(str(e), "text/plain", 400)
+        except (ValueError, OSError) as e:
+            return self._send(str(e) or "render failed",
+                              "text/plain", 400)
+        except Exception as e:  # corrupt PNG etc: plain message
+            return self._send(f"render failed: {e}", "text/plain", 500)
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(img)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            self.wfile.write(img)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _open(self):
         """Switch the edited file. Restricted to programs/*.json."""
