@@ -16,6 +16,15 @@
           "bitmap/destinations/custom/noroute/noroute-not-in-service-2.png"
         ]
       }
+    },
+    "Bus Reversing": {
+      "route": "000",
+      "destinations": {
+        "Bus Reversing": [
+          "bitmap/destinations/bus-reversing/noroute/noroute-bus-reversing-1.png",
+          "bitmap/destinations/bus-reversing/noroute/noroute-bus-reversing-2.png"
+        ]
+      }
     }
   }
 }
