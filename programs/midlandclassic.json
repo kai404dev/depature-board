@@ -7,24 +7,25 @@
       "route": "1",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/midlandclassic/1/1-burton.png"
+          "bitmap/destinations/midlandclassic/1/1-burton-1.png",
+          "bitmap/destinations/midlandclassic/1/1-burton-2.png"
         ],
         "Tutbury": [
-          "bitmap/destinations/midlandclassic/1/1-tutbury.png"
+          "bitmap/destinations/midlandclassic/1/1-tutbury-1.png",
+          "bitmap/destinations/midlandclassic/1/1-tutbury-2.png"
         ]
       }
     },
     "2": {
       "route": "2",
       "destinations": {
-        "Horninglow": [
-          "bitmap/destinations/midlandclassic/2/2-horninglow.png"
-        ],
-        "Stapenhill": [
-          "bitmap/destinations/midlandclassic/2/2-stapenhill.png"
-        ],
         "Burton": [
-          "bitmap/destinations/midlandclassic/2/2-burton-then-horninglow.png"
+          "bitmap/destinations/midlandclassic/2/2-burton-1.png",
+          "bitmap/destinations/midlandclassic/2/2-burton-2.png"
+        ],
+        "Edge Hill": [
+          "bitmap/destinations/midlandclassic/2/2-edge-hill-1.png",
+          "bitmap/destinations/midlandclassic/2/2-edge-hill-2.png"
         ]
       }
     },
@@ -32,13 +33,12 @@
       "route": "3",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/midlandclassic/3/3-burton.png"
-        ],
-        "Hospital": [
-          "bitmap/destinations/midlandclassic/3/3-hospital.png"
+          "bitmap/destinations/midlandclassic/3/3-burton-1.png",
+          "bitmap/destinations/midlandclassic/3/3-burton-2.png"
         ],
         "Winshill": [
-          "bitmap/destinations/midlandclassic/3/3-winshill.png"
+          "bitmap/destinations/midlandclassic/3/3-winshill-1.png",
+          "bitmap/destinations/midlandclassic/3/3-winshill-2.png"
         ]
       }
     },
@@ -46,10 +46,58 @@
       "route": "4",
       "destinations": {
         "Burton": [
-          "bitmap/destinations/midlandclassic/4/4-burton.png"
+          "bitmap/destinations/midlandclassic/4/4-burton-1.png",
+          "bitmap/destinations/midlandclassic/4/4-burton-2.png"
         ],
+        "Midway": [
+          "bitmap/destinations/midlandclassic/4/4-midway-1.png",
+          "bitmap/destinations/midlandclassic/4/4-midway-2.png"
+        ]
+      }
+    },
+    "8": {
+      "route": "8",
+      "destinations": {
         "Swadlincote": [
-          "bitmap/destinations/midlandclassic/4/4-swadlincote.png"
+          "bitmap/destinations/midlandclassic/8/8-swadlincote.png"
+        ],
+        "Burton then Hospital": [
+          "bitmap/destinations/midlandclassic/8/8-burton-then-hospital.png"
+        ],
+        "Burton only": [
+          "bitmap/destinations/midlandclassic/8/8-burton-only.png"
+        ],
+        "Hospital": [
+          "bitmap/destinations/midlandclassic/8/8-hospital.png"
+        ]
+      }
+    },
+    "9": {
+      "route": "9",
+      "destinations": {
+        "EM Gateway": [
+          "bitmap/destinations/midlandclassic/9/9-airport-1.png",
+          "bitmap/destinations/midlandclassic/9/9-airport-2.png",
+          "bitmap/destinations/midlandclassic/9/9-airport-3.png",
+          "bitmap/destinations/midlandclassic/9/9-airport-4.png",
+          "bitmap/destinations/midlandclassic/9/9-airway.png"
+        ],
+        "Burton then Hospital": [
+          "bitmap/destinations/midlandclassic/9/9-burton-1.png",
+          "bitmap/destinations/midlandclassic/9/9-burton-2.png",
+          "bitmap/destinations/midlandclassic/9/9-burton-3.png",
+          "bitmap/destinations/midlandclassic/9/9-burton-then-hospital.png",
+          "bitmap/destinations/midlandclassic/9/9-airway.png"
+        ],
+        "Burton only": [
+          "bitmap/destinations/midlandclassic/9/9-burton-1.png",
+          "bitmap/destinations/midlandclassic/9/9-burton-2.png",
+          "bitmap/destinations/midlandclassic/9/9-burton-3.png",
+          "bitmap/destinations/midlandclassic/9/9-burton-only.png",
+          "bitmap/destinations/midlandclassic/9/9-airway.png"
+        ],
+        "Hospital": [
+          "bitmap/destinations/midlandclassic/9/9-hospital.png"
         ]
       }
     },
