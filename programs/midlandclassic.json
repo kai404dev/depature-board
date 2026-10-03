@@ -193,6 +193,164 @@
         ]
       }
     },
+    "21": {
+      "route": "21",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/21/21-burton.png"
+        ],
+        "Swadlincote": [
+          "bitmap/destinations/midlandclassic/21/21-swadlincote.png"
+        ]
+      }
+    },
+    "22": {
+      "route": "22",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/22/22-burton.png"
+        ],
+        "Swadlincote": [
+          "bitmap/destinations/midlandclassic/22/22-swadlincote.png"
+        ]
+      }
+    },
+    "24": {
+      "route": "24",
+      "destinations": {
+        "Swadlincote": [
+          "bitmap/destinations/midlandclassic/24/24-swadlincote.png"
+        ]
+      }
+    },
+    "31": {
+      "route": "31",
+      "destinations": {
+        "Lichfield": [
+          "bitmap/destinations/midlandclassic/31/31-lichfield-1.png",
+          "bitmap/destinations/midlandclassic/31/31-lichfield-2.png"
+        ]
+      }
+    },
+    "32": {
+      "route": "32",
+      "destinations": {
+        "Lichfield": [
+          "bitmap/destinations/midlandclassic/32/32-lichfield-1.png",
+          "bitmap/destinations/midlandclassic/32/32-lichfield-2.png"
+        ]
+      }
+    },
+    "70": {
+      "route": "70",
+      "destinations": {
+        "Derby": [
+          "bitmap/destinations/midlandclassic/70/70-derby.png"
+        ],
+        "Barrow upon Trent": [
+          "bitmap/destinations/midlandclassic/70/70-barrow-upon-trent.png"
+        ]
+      }
+    },
+    "73": {
+      "route": "73",
+      "destinations": {
+        "Derby": [
+          "bitmap/destinations/midlandclassic/73/73-derby-1.png",
+          "bitmap/destinations/midlandclassic/73/73-derby-2.png"
+        ],
+        "Weston on Trent": [
+          "bitmap/destinations/midlandclassic/73/73-weston-1.png",
+          "bitmap/destinations/midlandclassic/73/73-weston-2.png"
+        ]
+      }
+    },
+    "125": {
+      "route": "125",
+      "destinations": {
+        "Castle Donington": [
+          "bitmap/destinations/midlandclassic/125/125-castle-donington.png"
+        ],
+        "Leicester": [
+          "bitmap/destinations/midlandclassic/125/125-leicester.png"
+        ]
+      }
+    },
+    "129": {
+      "route": "129",
+      "destinations": {
+        "Ashby": [
+          "bitmap/destinations/midlandclassic/129/129-ashby.png"
+        ],
+        "Loughborough": [
+          "bitmap/destinations/midlandclassic/129/129-loughborough.png"
+        ]
+      }
+    },
+    "401": {
+      "route": "401",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/401/401-burton-1.png",
+          "bitmap/destinations/midlandclassic/401/401-burton-2.png"
+        ],
+        "Uttoxeter": [
+          "bitmap/destinations/midlandclassic/401/401-uttoxeter-1.png",
+          "bitmap/destinations/midlandclassic/401/401-uttoxeter-2.png"
+        ],
+        "Tutbury": [
+          "bitmap/destinations/midlandclassic/401/401-tutbury.png"
+        ]
+      }
+    },
+    "402": {
+      "route": "402",
+      "destinations": {
+        "Uttoxeter": [
+          "bitmap/destinations/midlandclassic/402/402-uttoxeter-1.png",
+          "bitmap/destinations/midlandclassic/402/402-uttoxeter-2.png",
+          "bitmap/destinations/midlandclassic/402/402-uttoxeter-3.png",
+          "bitmap/destinations/midlandclassic/402/402-uttoxeter-4.png"
+        ],
+        "Burton": [
+          "bitmap/destinations/midlandclassic/402/402-burton-1.png",
+          "bitmap/destinations/midlandclassic/402/402-burton-2.png",
+          "bitmap/destinations/midlandclassic/402/402-burton-3.png",
+          "bitmap/destinations/midlandclassic/402/402-burton-4.png"
+        ]
+      }
+    },
+    "403": {
+      "route": "403",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/403/403-burton-1.png",
+          "bitmap/destinations/midlandclassic/403/403-burton-2.png",
+          "bitmap/destinations/midlandclassic/403/403-burton-3.png"
+        ],
+        "Uttoxeter": [
+          "bitmap/destinations/midlandclassic/403/403-uttoxeter-1.png",
+          "bitmap/destinations/midlandclassic/403/403-uttoxeter-2.png",
+          "bitmap/destinations/midlandclassic/403/403-uttoxeter-3.png"
+        ]
+      }
+    },
+    "405": {
+      "route": "405",
+      "destinations": {
+        "Uttoxeter": [
+          "bitmap/destinations/midlandclassic/405/405-uttoxeter.png"
+        ]
+      }
+    },
+    "406": {
+      "route": "406",
+      "destinations": {
+        "Uttoxeter": [
+          "bitmap/destinations/midlandclassic/406/406-uttoxeter.png"
+        ]
+      }
+    },
     "000": {
       "route": "000",
       "code": "0",
@@ -241,6 +399,20 @@
         "Lichfield": [
           "bitmap/destinations/midlandclassic/12e/12e-lichfield-1.png",
           "bitmap/destinations/midlandclassic/12e/12e-lichfield-2.png"
+        ]
+      }
+    },
+    "X11": {
+      "route": "X11",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/midlandclassic/X11/X11-burton-1.png",
+          "bitmap/destinations/midlandclassic/X11/X11-burton-2.png"
+        ],
+        "Aston": [
+          "bitmap/destinations/midlandclassic/X11/X11-aston-1.png",
+          "bitmap/destinations/midlandclassic/X11/X11-aston-2.png",
+          "bitmap/destinations/midlandclassic/X11/X11-aston-3.png"
         ]
       }
     }

@@ -8,39 +8,36 @@
 [X] | 10 Burton - Rough Hay
 [X] | 11 Burton - Anglesey Road
 [X] | X12 Burton - Lichfield - Sutton Coldfield
-[] | 12E Burton - Lichfield
-[] | 12 Burton - Barton - Alrewas - Lichfield
+[X] | 12E Burton - Lichfield
+[X] | 12 Burton - Barton - Alrewas - Lichfield
 [X] | 17 Burton - Clay Mills
-[] | 18 Burton - Dalebrook Estate
+[X] | 18 Burton - Dalebrook Estate
 [] | 19 Burton - Swadlincote - Netherseal - Ashby
-[] | 19 Burton - Swadlincote - Measham - Ashby
 [] | 19B Burton - Swadlincote - Netherseal - Moira
 [] | 19B Burton - Swadlincote - Measham - Moira
 [] | 19C Moira - Netherseal - Burton
 [] | 19C Moira - Measham - Linton - Burton
-[] | 21 Burton - Linton - Swadlincote
-[] | 21 Burton - Linton - Swadlincote
+[X] | 21 Burton - Linton - Swadlincote
 [] | 21B Swadlincote - Linton - Burton
-[] | 21B Swadlincote - Linton - Burton
-[] | 21E Burton - Swadlincote - Church Gresley - Overseal
 [] | 21E Burton - Swadlincote - Overseal
 [] | 22 Swadlincote - Coton Park - Coton In The Elms - Burton
 [] | 22 Burton - Walton - Rosliston - Swadlincote
 [] | 22S Pingle School - Swadlincote - Rosliston
 [] | 22S Rosliston - Linton - Swadlincote
 [] | 24 Swadlincote - Lower Midway - Swadlincote
-[] | 125 Netherseal - William Allitt School
+[X] | 31 Lichfield Circular
+[X] | 32 Lichfield Circular
+[X] | 125 Netherseal - William Allitt School
 [] | 126 Church Gresley - William Allitt School
 [] | 127 Church Gresley - William Allitt School
 [] | 213 Stanhope Bretby - Repton Primary School
 [] | 327 Horninglow - Paget High School
-[] | 401 Uttoxeter - Hatton - Tutbury - Burton
-[] | 401 Uttoxeter - Tutbury - Burton
-[] | 402 Uttoxeter - Draycott - Burton
+[X] | 401 Uttoxeter - Hatton - Tutbury - Burton
+[X] | 402 Uttoxeter - Draycott - Burton
 [] | 402A Uttoxeter - Newborough - Burton
-[] | 403 Uttoxeter - Abbots Bromley - Burton
-[] | 405 Burton - Sudbury - Ashbourne
-[] | 406 Uttoxeter Town Circular
+[X] | 403 Uttoxeter - Abbots Bromley - Burton
+[X] | 405 Burton - Sudbury - Ashbourne
+[X] | 406 Uttoxeter Town Circular
 [] | 807 Beam Hill - Anslow - Barton
 [] | 809 Burton - Barton
 [] | 810 Burton - Yoxall - Alrewas - Lichfield
@@ -48,11 +45,9 @@
 [] | 812 Burton - Yoxall - Alrewas - Lichfield
 [] | 813 Burton - Lichfield - Burntwood - Rodbaston College
 [] | 819 Hill Ridware - Lichfield
-[] | 821 Lichfield Circular
-[] | 822 Lichfield Circular
 [] | X6 Burton - Derby
-[] | X11 Burton on Trent - Perry Barr via Erdington
-[] | X12 Burton - Lichfield
+[X] | X11 Burton on Trent - Perry Barr via Erdington
+[X] | X12 Burton - Lichfield
 [] | X18 Smethwick - Burton via Kingstanding
 [] | X39 Derby - Burton - Centrum
 [] | X61 Woverhampton - Centrum One Hundred 
