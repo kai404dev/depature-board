@@ -1,0 +1,16 @@
+{
+  "rotate_seconds": 3,
+  "image_fit": "fit",
+  "colour": "#DB9600",
+  "programs": {
+    "401": {
+      "route": "401",
+      "destinations": {
+        "Burton": [
+          "bitmap/destinations/custom/401/401-burton-1.png",
+          "bitmap/destinations/custom/401/401-burton-2.png"
+        ]
+      }
+    }
+  }
+}

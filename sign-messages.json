@@ -1,0 +1,381 @@
+[
+  {
+    "name": "Not In Service",
+    "route": "",
+    "destination": "Not In Service",
+    "via": "",
+    "style": "top",
+    "fsrc": "bdf",
+    "route_font": "10x20.bdf",
+    "dest_font": "johnston100-32.bdf",
+    "via_font": "6x13B.bdf",
+    "route_scale": 2,
+    "dest_scale": 1,
+    "via_scale": 1,
+    "sys": {
+      "route": {
+        "family": "Arial",
+        "px": 34,
+        "bold": false
+      },
+      "dest": {
+        "family": "Apple Symbols",
+        "px": 40,
+        "bold": false
+      },
+      "via": {
+        "family": "Arial",
+        "px": 12,
+        "bold": false
+      }
+    },
+    "touch": {
+      "add": [],
+      "del": []
+    },
+    "program": {},
+    "pages": [
+      {
+        "route": "",
+        "destination": "Not In Service",
+        "via": "",
+        "style": "top",
+        "fsrc": "bdf",
+        "route_font": "10x20.bdf",
+        "dest_font": "johnston100-32.bdf",
+        "via_font": "6x13B.bdf",
+        "route_scale": 2,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": true,
+        "sys": {
+          "route": {
+            "family": "Arial",
+            "px": 34,
+            "bold": false
+          },
+          "dest": {
+            "family": "Apple Symbols",
+            "px": 40,
+            "bold": false
+          },
+          "via": {
+            "family": "Arial",
+            "px": 12,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [],
+          "del": []
+        },
+        "seconds": 0
+      },
+      {
+        "route": "",
+        "destination": "Sorry",
+        "via": "",
+        "style": "top",
+        "fsrc": "bdf",
+        "route_font": "10x20.bdf",
+        "dest_font": "johnston100-30.bdf",
+        "via_font": "6x13B.bdf",
+        "route_scale": 2,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": false,
+        "sys": {
+          "route": {
+            "family": "Arial",
+            "px": 34,
+            "bold": false
+          },
+          "dest": {
+            "family": "Arial",
+            "px": 30,
+            "bold": false
+          },
+          "via": {
+            "family": "Arial",
+            "px": 12,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [],
+          "del": []
+        },
+        "seconds": 0
+      }
+    ]
+  },
+  {
+    "name": "X12 Burton",
+    "route": "X12",
+    "destination": "Burton",
+    "via": "...fast",
+    "style": "bottom",
+    "fsrc": "sys",
+    "route_font": "10x20.bdf",
+    "dest_font": "10x20.bdf",
+    "via_font": "6x13B.bdf",
+    "route_scale": 2,
+    "dest_scale": 1,
+    "via_scale": 1,
+    "sys": {
+      "route": {
+        "family": "Apple Symbols",
+        "px": 40,
+        "bold": false
+      },
+      "dest": {
+        "family": "Apple Symbols",
+        "px": 37,
+        "bold": false
+      },
+      "via": {
+        "family": "Apple Symbols",
+        "px": 23,
+        "bold": false
+      }
+    },
+    "touch": {
+      "add": [],
+      "del": []
+    },
+    "program": {},
+    "pages": [
+      {
+        "route": "X12",
+        "destination": "Burton",
+        "via": "...fast",
+        "style": "bottom",
+        "fsrc": "sys",
+        "route_font": "10x20.bdf",
+        "dest_font": "10x20.bdf",
+        "via_font": "6x13B.bdf",
+        "route_scale": 2,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": false,
+        "sys": {
+          "route": {
+            "family": "Apple Symbols",
+            "px": 40,
+            "bold": false
+          },
+          "dest": {
+            "family": "Apple Symbols",
+            "px": 37,
+            "bold": false
+          },
+          "via": {
+            "family": "Apple Symbols",
+            "px": 23,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [],
+          "del": []
+        },
+        "seconds": 0
+      }
+    ]
+  },
+  {
+    "name": "401 Burton",
+    "route": "401",
+    "destination": "Burton",
+    "via": "Tutbury Hatton",
+    "style": "top",
+    "fsrc": "sys",
+    "route_font": "johnston10016.bdf",
+    "dest_font": "johnston10020.bdf",
+    "via_font": "johnston10013.bdf",
+    "route_scale": 3,
+    "dest_scale": 1,
+    "via_scale": 1,
+    "sys": {
+      "route": {
+        "family": "Apple Symbols",
+        "px": 40,
+        "bold": false
+      },
+      "dest": {
+        "family": "Apple Symbols",
+        "px": 37,
+        "bold": false
+      },
+      "via": {
+        "family": "Apple Symbols",
+        "px": 26,
+        "bold": false
+      }
+    },
+    "touch": {
+      "add": [],
+      "del": []
+    },
+    "program": {
+      "file": "programs/jw copy.json",
+      "program": "401",
+      "destination": "Burton",
+      "route": "401"
+    },
+    "pages": [
+      {
+        "route": "401",
+        "destination": "Burton",
+        "via": "Tutbury Hatton",
+        "style": "top",
+        "fsrc": "sys",
+        "route_font": "10x20.bdf",
+        "dest_font": "10x20.bdf",
+        "via_font": "6x13B.bdf",
+        "route_scale": 2,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": false,
+        "sys": {
+          "route": {
+            "family": "Apple Symbols",
+            "px": 40,
+            "bold": false
+          },
+          "dest": {
+            "family": "Apple Symbols",
+            "px": 37,
+            "bold": false
+          },
+          "via": {
+            "family": "Apple Symbols",
+            "px": 26,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [],
+          "del": []
+        },
+        "seconds": 0
+      },
+      {
+        "route": "401",
+        "destination": "Burton",
+        "via": "Tutbury Hatton",
+        "style": "top",
+        "fsrc": "sys",
+        "route_font": "johnston10016.bdf",
+        "dest_font": "johnston10020.bdf",
+        "via_font": "johnston10013.bdf",
+        "route_scale": 3,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": false,
+        "sys": {
+          "route": {
+            "family": "Apple Symbols",
+            "px": 40,
+            "bold": false
+          },
+          "dest": {
+            "family": "Apple Symbols",
+            "px": 37,
+            "bold": false
+          },
+          "via": {
+            "family": "Apple Symbols",
+            "px": 26,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [],
+          "del": []
+        },
+        "seconds": 0
+      }
+    ]
+  },
+  {
+    "name": "401 Uttoxeter",
+    "route": "401",
+    "destination": "Uttoxeter",
+    "via": "Hatton Tutbury",
+    "style": "top",
+    "fsrc": "sys",
+    "route_font": "10x20.bdf",
+    "dest_font": "10x20.bdf",
+    "via_font": "6x13B.bdf",
+    "route_scale": 2,
+    "dest_scale": 1,
+    "via_scale": 1,
+    "sys": {
+      "route": {
+        "family": "Apple Symbols",
+        "px": 40,
+        "bold": false
+      },
+      "dest": {
+        "family": "Apple Symbols",
+        "px": 37,
+        "bold": false
+      },
+      "via": {
+        "family": "Apple Symbols",
+        "px": 26,
+        "bold": false
+      }
+    },
+    "touch": {
+      "add": [],
+      "del": []
+    },
+    "program": {},
+    "pages": [
+      {
+        "route": "401",
+        "destination": "Uttoxeter",
+        "via": "Hatton Tutbury",
+        "style": "top",
+        "fsrc": "sys",
+        "route_font": "10x20.bdf",
+        "dest_font": "10x20.bdf",
+        "via_font": "6x13B.bdf",
+        "route_scale": 2,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": false,
+        "sys": {
+          "route": {
+            "family": "Apple Symbols",
+            "px": 40,
+            "bold": false
+          },
+          "dest": {
+            "family": "Apple Symbols",
+            "px": 37,
+            "bold": false
+          },
+          "via": {
+            "family": "Apple Symbols",
+            "px": 26,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [],
+          "del": []
+        },
+        "seconds": 0
+      }
+    ]
+  }
+]

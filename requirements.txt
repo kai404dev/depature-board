@@ -11,3 +11,4 @@ Pillow>=9.0
 cython>=3.0
 scikit-build-core>=0.9
 kafka-python>=2.0  # optional: Darwin push-port carriage loadings only
+PySide6>=6.0  # optional: Sign Studio desktop app (sign-studio.py) only
