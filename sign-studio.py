@@ -29,7 +29,7 @@ THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, THIS_DIR)
 MSG_FILE = os.path.join(THIS_DIR, "sign-messages.json")
 
-from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
 from PySide6.QtGui import (QBrush, QColor, QImage, QKeySequence, QPainter,
                            QPen, QPixmap, QShortcut)
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox,
@@ -128,12 +128,20 @@ def slug(s, fallback="untitled"):
             or fallback)
 
 
-def page_filenames(name_route, name_dest, n):
-    """PNG filenames for n pages: 401-burton-1.png, ... (1-based)."""
+def page_paths(program, name_route, name_dest, n):
+    """Repo-relative PNG paths for n pages, 1-based and stable:
+
+      bitmap/destinations/<program>/<route>/<route>-<dest>-<page>.png
+
+    e.g. bitmap/destinations/401/401/401-burton-1.png
+    """
+    p = slug(program, "custom")
     r = slug(name_route, "noroute")
     d = slug(name_dest, "untitled")
     base = f"{r}-{d}" if r != d else r
-    return [f"{base}-{i}.png" for i in range(1, n + 1)]
+    return [os.path.join("bitmap", "destinations", p, r,
+                          f"{base}-{i}.png").replace(os.sep, "/")
+            for i in range(1, n + 1)]
 
 
 def page_job(page, fg_hex):
@@ -216,8 +224,8 @@ def normalize_page(p):
         "route_scale": p.get("route_scale", 2),
         "dest_scale": p.get("dest_scale", 1),
         "via_scale": p.get("via_scale", 1),
-        "upper_dest": p.get("upper_dest", True),
-        "via_prefix": p.get("via_prefix", True),
+        "upper_dest": p.get("upper_dest", False),
+        "via_prefix": p.get("via_prefix", False),
         "sys": sysn,
         "touch": _touch_lists(p.get("touch")),
         "seconds": secs if secs > 0 else 0,
@@ -328,8 +336,13 @@ def send_pages_to_program(pages, fg_hex, invert, name_route, name_dest,
             raise ValueError(f"{rel or full} is already broken: {e}")
     else:
         # brand-new program file in house style (midlandclassic
-        # defaults: amber blinds); the folder must already exist so a
-        # typo can't spray directories around
+        # defaults: amber blinds). New files must live under
+        # programs/ so a typo can't spray files around the repo.
+        progs_dir = os.path.join(THIS_DIR, "programs") + os.sep
+        if not full.startswith(progs_dir) or os.sep in os.path.basename(
+                full):
+            raise ValueError("new program files must live under "
+                             "programs/, e.g. programs/mine.json")
         if not os.path.isdir(os.path.dirname(full)):
             raise ValueError(f"folder does not exist: "
                              f"{os.path.dirname(full)}")
@@ -343,15 +356,12 @@ def send_pages_to_program(pages, fg_hex, invert, name_route, name_dest,
     if not dname:
         raise ValueError("name a destination")
 
-    rslug = slug(name_route, "noroute")
-    fnames = page_filenames(name_route, name_dest, len(pages))
+    relpaths = page_paths(pname, name_route, name_dest, len(pages))
     fg = ENG.parse_colour(fg_hex)
     # phase 1: prepare every page (spec resolution fails here, before
     # any PNG is written)
     planned = []  # (page, job, spec-or-None, png_full_path, secs)
     skipped = 0
-    destdir = os.path.join(THIS_DIR, "bitmap", "destinations",
-                           "custom", rslug)
     for i, page in enumerate(pages):
         if page_is_empty(page):
             skipped += 1
@@ -365,13 +375,14 @@ def send_pages_to_program(pages, fg_hex, invert, name_route, name_dest,
         except (TypeError, ValueError):
             secs = 0
         planned.append((page, job, spec,
-                        os.path.join(destdir, fnames[i]),
+                        os.path.join(THIS_DIR, relpaths[i]),
                         secs if secs > 0 else None))
     if not planned:
         raise ValueError("every page is blank -- nothing sent")
     # phase 2: render + write PNGs
     rendered = []  # (repo-rel-posix-path, seconds-or-None)
-    os.makedirs(destdir, exist_ok=True)
+    for full_png in {p[3] for p in planned}:
+        os.makedirs(os.path.dirname(full_png), exist_ok=True)
     for page, job, spec, full_png, secs in planned:
         if spec is not None:
             frame, _info = sysfonts.render_system(ENG, job, spec)
@@ -496,11 +507,15 @@ class SendDialog(QDialog):
         lay = QVBoxLayout(self)
         form = QFormLayout()
         self.c_file = QComboBox()
+        self.c_file.setEditable(True)
+        self.c_file.setInsertPolicy(QComboBox.NoInsert)
         files = program_files()
         self.c_file.addItems(files)
-        if routing.get("file") in files:
+        if routing.get("file"):
+            # editable: an existing file or a new programs/*.json path
             self.c_file.setCurrentText(routing["file"])
         self.c_file.currentIndexChanged.connect(self._file_changed)
+        self.c_file.lineEdit().editingFinished.connect(self._file_changed)
         form.addRow("Program file", self.c_file)
         self.c_prog = QComboBox()
         self.c_prog.setEditable(True)
@@ -582,10 +597,15 @@ class SendDialog(QDialog):
             self.c_dest.setCurrentText(cur)
         self._update_summary()
 
+    def _is_new_file(self):
+        full = self._full()
+        return bool(full) and not os.path.isfile(full)
+
     def _update_summary(self):
         n = len(self._pages)
-        fnames = page_filenames(self.e_route.text(),
-                                self.c_dest.currentText(), n)
+        paths = page_paths(self.c_prog.currentText(),
+                           self.e_route.text(),
+                           self.c_dest.currentText(), n)
         secs = []
         for p in self._pages:
             try:
@@ -593,12 +613,14 @@ class SendDialog(QDialog):
             except (TypeError, ValueError):
                 s = 0
             secs.append(f"{s:g}s" if s > 0 else "file default")
+        new = " (new file — will be created)" if self._is_new_file() \
+            else ""
         self.summary.setText(
-            f"{n} page(s) → {self.c_file.currentText()} › "
+            f"{n} page(s) → {self.c_file.currentText() or '?'} › "
             f"{self.c_prog.currentText() or '?'} › "
-            f"{self.c_dest.currentText() or '?'}\n"
+            f"{self.c_dest.currentText() or '?'}{new}\n"
             + ", ".join(f"{f} ({s})"
-                        for f, s in zip(fnames, secs)))
+                        for f, s in zip(paths, secs)))
 
     def routing(self):
         return {"file": self.c_file.currentText().strip(),
@@ -770,9 +792,12 @@ class Studio(QMainWindow):
         self.bdf_rows = QWidget()
         bl = QVBoxLayout(self.bdf_rows)
         bl.setContentsMargins(0, 0, 0, 0)
-        self.c_rf, self.s_rs = self._bdf_row(bl, "route", "10x20.bdf", 2)
-        self.c_df, self.s_ds = self._bdf_row(bl, "dest", "10x20.bdf", 1)
-        self.c_vf, self.s_vs = self._bdf_row(bl, "via", "6x13B.bdf", 1)
+        self.c_rf, self.s_rs = self._bdf_row(bl, "route",
+                                              "johnston100-40.bdf", 1)
+        self.c_df, self.s_ds = self._bdf_row(bl, "dest",
+                                             "johnston100-32.bdf", 1)
+        self.c_vf, self.s_vs = self._bdf_row(bl, "via",
+                                             "johnston100-20.bdf", 1)
         fl.addWidget(self.bdf_rows)
         self.sys_rows = QWidget()
         yl = QVBoxLayout(self.sys_rows)
@@ -810,13 +835,8 @@ class Studio(QMainWindow):
         opt_box = self._group("Options", sl)
         ol = QHBoxLayout(opt_box)
         self.ck_invert = QCheckBox("Invert")
-        self.ck_upper = QCheckBox("DEST UPPERCASE")
-        self.ck_upper.setChecked(True)
-        self.ck_prefix = QCheckBox('"via" prefix')
-        self.ck_prefix.setChecked(True)
-        for ck in (self.ck_invert, self.ck_upper, self.ck_prefix):
-            ck.stateChanged.connect(lambda _s, self=self: self.refresh())
-            ol.addWidget(ck)
+        self.ck_invert.stateChanged.connect(lambda _s: self.refresh())
+        ol.addWidget(self.ck_invert)
 
         msg_box = self._group("Messages", sl)
         ml = QVBoxLayout(msg_box)
@@ -886,8 +906,8 @@ class Studio(QMainWindow):
         toolbar = QHBoxLayout()
         toolbar.addWidget(QLabel("zoom"))
         self.c_zoom = QComboBox()
-        self.c_zoom.addItems(["2", "3", "4", "6", "8"])
-        self.c_zoom.setCurrentText("3")
+        self.c_zoom.addItems(["fit", "2", "3", "4", "6", "8"])
+        self.c_zoom.setCurrentText("fit")
         self.c_zoom.currentIndexChanged.connect(self.refresh_display)
         toolbar.addWidget(self.c_zoom)
         self.ck_dots = QCheckBox("LED dots")
@@ -925,6 +945,7 @@ class Studio(QMainWindow):
         self.canvas = PixelCanvas(self)
         self.scroll.setWidget(self.canvas)
         self.scroll.setAlignment(Qt.AlignCenter)
+        self.scroll.viewport().installEventFilter(self)
         mml.addWidget(self.scroll, 1)
         mml.addWidget(QLabel(
             "left paints · right erases · B/E tools · touch-ups stick to "
@@ -1043,10 +1064,26 @@ class Studio(QMainWindow):
 
     # -- state ---------------------------------------------------------
     def zoom(self):
+        text = self.c_zoom.currentText()
+        if text == "fit":
+            try:
+                avail = self.scroll.viewport().width()
+            except Exception:
+                avail = 0
+            if avail and avail >= W:
+                return max(1, min(8, avail // W))
+            return 3
         try:
-            return max(1, min(8, int(self.c_zoom.currentText())))
+            return max(1, min(8, int(text)))
         except (TypeError, ValueError):
             return 3
+
+    def eventFilter(self, obj, event):
+        if obj is self.scroll.viewport() and \
+                event.type() == QEvent.Type.Resize and \
+                self.c_zoom.currentText() == "fit":
+            self.refresh_display()
+        return super().eventFilter(obj, event)
 
     def tool(self):
         return "erase" if self.b_erase.isChecked() else "paint"
@@ -1084,6 +1121,8 @@ class Studio(QMainWindow):
         self.refresh()
 
     def job(self):
+        cur = self.pages[self.page_idx] \
+            if 0 <= self.page_idx < len(self.pages) else {}
         return {
             "route": self.e_route.text(), "dest": self.e_dest.text(),
             "via": self.e_via.text(), "style": self.style(),
@@ -1094,8 +1133,8 @@ class Studio(QMainWindow):
             "dest_scale": self.s_ds.value(),
             "via_scale": self.s_vs.value(),
             "fg": self.fg_hex,
-            "upper_dest": self.ck_upper.isChecked(),
-            "via_prefix": self.ck_prefix.isChecked(),
+            "upper_dest": cur.get("upper_dest", False),
+            "via_prefix": cur.get("via_prefix", False),
         }
 
     def ensure_faces(self):
@@ -1394,6 +1433,11 @@ class Studio(QMainWindow):
             sys_spec[name] = {"family": combo.currentText().strip(),
                               "px": spin.value(),
                               "bold": bold.isChecked()}
+        # case/prefix rules live on the page (no editor UI): keep the
+        # current page's values so editing never flips them; fresh
+        # pages default to off (type casing manually)
+        cur = self.pages[self.page_idx] \
+            if 0 <= self.page_idx < len(self.pages) else {}
         return normalize_page({
             "route": self.e_route.text(), "destination": self.e_dest.text(),
             "via": self.e_via.text(), "style": self.style(),
@@ -1404,8 +1448,8 @@ class Studio(QMainWindow):
             "route_scale": self.s_rs.value(),
             "dest_scale": self.s_ds.value(),
             "via_scale": self.s_vs.value(),
-            "upper_dest": self.ck_upper.isChecked(),
-            "via_prefix": self.ck_prefix.isChecked(),
+            "upper_dest": cur.get("upper_dest", False),
+            "via_prefix": cur.get("via_prefix", False),
             "sys": sys_spec,
             "touch": {"add": sorted(self.touch_add),
                       "del": sorted(self.touch_del)},
@@ -1445,8 +1489,6 @@ class Studio(QMainWindow):
                     combo.setCurrentText(s["family"])
                 spin.setValue(s["px"])
                 bold.setChecked(s["bold"])
-            self.ck_upper.setChecked(bool(page["upper_dest"]))
-            self.ck_prefix.setChecked(bool(page["via_prefix"]))
             self.s_secs.setValue(int(page["seconds"] or 0))
             self.touch_add, self.touch_del = touch_of(
                 {"touch": page["touch"]})
@@ -1618,10 +1660,11 @@ class Studio(QMainWindow):
                 if summary["skipped"] else "")
         dup = summary["added"] < len(summary["paths"])
         note = " (already-listed images skipped)" if dup else ""
+        new = " (new file created)" if summary.get("created_file") else ""
         self.status.showMessage(
             f"sent {len(summary['paths'])} page(s) to "
             f"{summary['program']}/{summary['destination']} in "
-            f"{summary['file']}{skip}{note}")
+            f"{summary['file']}{skip}{note}{new}")
         return True
 
     def open_preview(self):
@@ -1690,12 +1733,13 @@ def smoke():
     w.s_brush.setValue(2)
     w.paint_stroke([(10, 10)], erase=False)
     check("brush 2x2", len(w.touch_add) == 4, f"{sorted(w.touch_add)}")
-    # coordinate mapping incl. clipping
+    # coordinate mapping incl. clipping (at explicit 3x: fit varies)
+    w.c_zoom.setCurrentText("3")
     check("map inside", w.canvas.pixel_from_pos(QPoint(3 * 10 + 1,
                                                         3 * 20 + 2))
           == (10, 20))
     check("map clipped", w.canvas.pixel_from_pos(QPoint(-5, 999)) is None)
-    # save + decode
+    # save + decode (clean up our own artifact afterwards)
     w.e_path.setText("bitmap/destinations/custom/qt-smoke.png")
     check("save", w.save_png())
     try:
@@ -1705,6 +1749,11 @@ def smoke():
         check("png 240x40", (sw, sh) == (240, 40))
     except SystemExit as e:
         check("png 240x40", False, str(e))
+    finally:
+        try:
+            os.remove("bitmap/destinations/custom/qt-smoke.png")
+        except OSError:
+            pass
     # messages round-trip (backup + restore the real file)
     bak = None
     if os.path.exists(MSG_FILE):

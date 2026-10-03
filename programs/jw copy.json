@@ -9,6 +9,10 @@
         "Burton": [
           "bitmap/destinations/custom/401/401-burton-1.png",
           "bitmap/destinations/custom/401/401-burton-2.png"
+        ],
+        "Not In Service": [
+          "bitmap/destinations/custom/noroute/noroute-not-in-service-1.png",
+          "bitmap/destinations/custom/noroute/noroute-not-in-service-2.png"
         ]
       }
     }

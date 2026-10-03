@@ -34,7 +34,7 @@ tweaks reach the real LEDs within about a second, no restart.
 | `control.json` | `{"page": null}` cycle, or `1/2/3` to hold a page |
 | `program.py` | Image programmes for the bus board (`programs.json`) |
 | `portal.py` | ICU 602 replica web portal on `:4040` (drives `program.py`) |
-| `sign-studio.py` | Desktop (Qt) sign designer: messages with multiple pages, bitmap or system fonts, pixel paint/erase touch-up tool, LED-dot preview with grid + field overlay, saves PNGs and sends pages straight into `programs/*.json` (`pip install PySide6`) |
+| `sign-studio.py` | Desktop (Qt) sign designer: multi-page messages (per-page seconds), bitmap (up to 8x) or system fonts (up to 120px), pixel paint/erase touch-ups, LED-dot preview with grid + field overlay, sends pages straight into new or existing `programs/*.json` (`pip install PySide6`) |
 | `engine.py` | Bitmap destination engine (240x40 BDF renderer, layouts, PNG writer — no GUI) backing the studio |
 | `sysfonts.py` | System-font rasterizer (Pillow 1-bit, no GUI) used by the studio |
 | `images.py` | Stdlib PNG decode/scale/tint shared by both boards |

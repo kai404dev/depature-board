@@ -6,10 +6,10 @@
     "via": "",
     "style": "top",
     "fsrc": "bdf",
-    "route_font": "10x20.bdf",
-    "dest_font": "johnston100-32.bdf",
+    "route_font": "johnston100-40.bdf",
+    "dest_font": "johnston100-37.bdf",
     "via_font": "6x13B.bdf",
-    "route_scale": 2,
+    "route_scale": 1,
     "dest_scale": 1,
     "via_scale": 1,
     "sys": {
@@ -33,7 +33,12 @@
       "add": [],
       "del": []
     },
-    "program": {},
+    "program": {
+      "file": "programs/jw copy.json",
+      "program": "401",
+      "destination": "Not In Service",
+      "route": "000"
+    },
     "pages": [
       {
         "route": "",
@@ -41,10 +46,10 @@
         "via": "",
         "style": "top",
         "fsrc": "bdf",
-        "route_font": "10x20.bdf",
-        "dest_font": "johnston100-32.bdf",
+        "route_font": "johnston100-40.bdf",
+        "dest_font": "johnston100-37.bdf",
         "via_font": "6x13B.bdf",
-        "route_scale": 2,
+        "route_scale": 1,
         "dest_scale": 1,
         "via_scale": 1,
         "upper_dest": false,
@@ -79,7 +84,7 @@
         "style": "top",
         "fsrc": "bdf",
         "route_font": "10x20.bdf",
-        "dest_font": "johnston100-30.bdf",
+        "dest_font": "johnston100-40.bdf",
         "via_font": "6x13B.bdf",
         "route_scale": 2,
         "dest_scale": 1,
@@ -112,91 +117,16 @@
     ]
   },
   {
-    "name": "X12 Burton",
-    "route": "X12",
-    "destination": "Burton",
-    "via": "...fast",
-    "style": "bottom",
-    "fsrc": "sys",
-    "route_font": "10x20.bdf",
-    "dest_font": "10x20.bdf",
-    "via_font": "6x13B.bdf",
-    "route_scale": 2,
-    "dest_scale": 1,
-    "via_scale": 1,
-    "sys": {
-      "route": {
-        "family": "Apple Symbols",
-        "px": 40,
-        "bold": false
-      },
-      "dest": {
-        "family": "Apple Symbols",
-        "px": 37,
-        "bold": false
-      },
-      "via": {
-        "family": "Apple Symbols",
-        "px": 23,
-        "bold": false
-      }
-    },
-    "touch": {
-      "add": [],
-      "del": []
-    },
-    "program": {},
-    "pages": [
-      {
-        "route": "X12",
-        "destination": "Burton",
-        "via": "...fast",
-        "style": "bottom",
-        "fsrc": "sys",
-        "route_font": "10x20.bdf",
-        "dest_font": "10x20.bdf",
-        "via_font": "6x13B.bdf",
-        "route_scale": 2,
-        "dest_scale": 1,
-        "via_scale": 1,
-        "upper_dest": false,
-        "via_prefix": false,
-        "sys": {
-          "route": {
-            "family": "Apple Symbols",
-            "px": 40,
-            "bold": false
-          },
-          "dest": {
-            "family": "Apple Symbols",
-            "px": 37,
-            "bold": false
-          },
-          "via": {
-            "family": "Apple Symbols",
-            "px": 23,
-            "bold": false
-          }
-        },
-        "touch": {
-          "add": [],
-          "del": []
-        },
-        "seconds": 0
-      }
-    ]
-  },
-  {
     "name": "401 Burton",
     "route": "401",
     "destination": "Burton",
-    "via": "Tutbury Hatton",
+    "via": "Sudbury Doveridge",
     "style": "top",
-    "fsrc": "sys",
-    "route_font": "johnston10016.bdf",
-    "dest_font": "johnston10020.bdf",
-    "via_font": "johnston10013.bdf",
-    "route_scale": 3,
+    "fsrc": "bdf",
+    "route_font": "johnston100-40.bdf",
+    "dest_font": "johnston100-32.bdf",
+    "via_font": "johnston100-20.bdf",
+    "route_scale": 1,
     "dest_scale": 1,
     "via_scale": 1,
     "sys": {
@@ -230,13 +160,13 @@
       {
         "route": "401",
         "destination": "Burton",
-        "via": "Tutbury Hatton",
+        "via": "Queen\u2019s Hospital",
         "style": "top",
-        "fsrc": "sys",
-        "route_font": "10x20.bdf",
-        "dest_font": "10x20.bdf",
-        "via_font": "6x13B.bdf",
-        "route_scale": 2,
+        "fsrc": "bdf",
+        "route_font": "johnston100-40.bdf",
+        "dest_font": "johnston100-32.bdf",
+        "via_font": "johnston100-20.bdf",
+        "route_scale": 1,
         "dest_scale": 1,
         "via_scale": 1,
         "upper_dest": false,
@@ -269,11 +199,48 @@
         "destination": "Burton",
         "via": "Tutbury Hatton",
         "style": "top",
-        "fsrc": "sys",
-        "route_font": "johnston10016.bdf",
-        "dest_font": "johnston10020.bdf",
-        "via_font": "johnston10013.bdf",
-        "route_scale": 3,
+        "fsrc": "bdf",
+        "route_font": "johnston100-40.bdf",
+        "dest_font": "johnston100-32.bdf",
+        "via_font": "johnston100-20.bdf",
+        "route_scale": 1,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": false,
+        "sys": {
+          "route": {
+            "family": "Apple Symbols",
+            "px": 40,
+            "bold": false
+          },
+          "dest": {
+            "family": "Apple Symbols",
+            "px": 37,
+            "bold": false
+          },
+          "via": {
+            "family": "Apple Symbols",
+            "px": 26,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [],
+          "del": []
+        },
+        "seconds": 0
+      },
+      {
+        "route": "401",
+        "destination": "Burton",
+        "via": "Sudbury Doveridge",
+        "style": "top",
+        "fsrc": "bdf",
+        "route_font": "johnston100-40.bdf",
+        "dest_font": "johnston100-32.bdf",
+        "via_font": "johnston100-20.bdf",
+        "route_scale": 1,
         "dest_scale": 1,
         "via_scale": 1,
         "upper_dest": false,
@@ -307,13 +274,13 @@
     "name": "401 Uttoxeter",
     "route": "401",
     "destination": "Uttoxeter",
-    "via": "Hatton Tutbury",
+    "via": "Queen\u2019s Hospital",
     "style": "top",
-    "fsrc": "sys",
-    "route_font": "10x20.bdf",
-    "dest_font": "10x20.bdf",
-    "via_font": "6x13B.bdf",
-    "route_scale": 2,
+    "fsrc": "bdf",
+    "route_font": "johnston100-40.bdf",
+    "dest_font": "johnston100-32.bdf",
+    "via_font": "johnston100-20.bdf",
+    "route_scale": 1,
     "dest_scale": 1,
     "via_scale": 1,
     "sys": {
@@ -342,13 +309,13 @@
       {
         "route": "401",
         "destination": "Uttoxeter",
-        "via": "Hatton Tutbury",
+        "via": "Doveridge Sudbury",
         "style": "top",
-        "fsrc": "sys",
-        "route_font": "10x20.bdf",
-        "dest_font": "10x20.bdf",
-        "via_font": "6x13B.bdf",
-        "route_scale": 2,
+        "fsrc": "bdf",
+        "route_font": "johnston100-40.bdf",
+        "dest_font": "johnston100-32.bdf",
+        "via_font": "johnston100-20.bdf",
+        "route_scale": 1,
         "dest_scale": 1,
         "via_scale": 1,
         "upper_dest": false,
@@ -373,6 +340,833 @@
         "touch": {
           "add": [],
           "del": []
+        },
+        "seconds": 0
+      },
+      {
+        "route": "401",
+        "destination": "Uttoxeter",
+        "via": "Hatton Tutbury",
+        "style": "top",
+        "fsrc": "bdf",
+        "route_font": "johnston100-40.bdf",
+        "dest_font": "johnston100-32.bdf",
+        "via_font": "johnston100-20.bdf",
+        "route_scale": 1,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": false,
+        "sys": {
+          "route": {
+            "family": "Apple Symbols",
+            "px": 40,
+            "bold": false
+          },
+          "dest": {
+            "family": "Apple Symbols",
+            "px": 37,
+            "bold": false
+          },
+          "via": {
+            "family": "Apple Symbols",
+            "px": 26,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [],
+          "del": []
+        },
+        "seconds": 0
+      },
+      {
+        "route": "401",
+        "destination": "Uttoxeter",
+        "via": "Queen\u2019s Hospital",
+        "style": "top",
+        "fsrc": "bdf",
+        "route_font": "johnston100-40.bdf",
+        "dest_font": "johnston100-32.bdf",
+        "via_font": "johnston100-20.bdf",
+        "route_scale": 1,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": false,
+        "sys": {
+          "route": {
+            "family": "Apple Symbols",
+            "px": 40,
+            "bold": false
+          },
+          "dest": {
+            "family": "Apple Symbols",
+            "px": 37,
+            "bold": false
+          },
+          "via": {
+            "family": "Apple Symbols",
+            "px": 26,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [],
+          "del": []
+        },
+        "seconds": 0
+      }
+    ]
+  },
+  {
+    "name": "1 Tutbury",
+    "route": "1",
+    "destination": "Tutbury",
+    "via": "the Tutbury jinnie",
+    "style": "top",
+    "fsrc": "bdf",
+    "route_font": "johnston100-45.bdf",
+    "dest_font": "johnston100-26.bdf",
+    "via_font": "johnston100-18.bdf",
+    "route_scale": 1,
+    "dest_scale": 1,
+    "via_scale": 1,
+    "sys": {
+      "route": {
+        "family": "Arial",
+        "px": 34,
+        "bold": false
+      },
+      "dest": {
+        "family": "Arial",
+        "px": 40,
+        "bold": false
+      },
+      "via": {
+        "family": "Arial",
+        "px": 12,
+        "bold": false
+      }
+    },
+    "touch": {
+      "add": [
+        [
+          39,
+          3
+        ],
+        [
+          39,
+          4
+        ],
+        [
+          39,
+          5
+        ],
+        [
+          39,
+          6
+        ],
+        [
+          39,
+          7
+        ],
+        [
+          39,
+          8
+        ],
+        [
+          39,
+          9
+        ],
+        [
+          39,
+          10
+        ],
+        [
+          52,
+          7
+        ],
+        [
+          52,
+          8
+        ],
+        [
+          52,
+          9
+        ],
+        [
+          52,
+          10
+        ],
+        [
+          52,
+          11
+        ],
+        [
+          52,
+          12
+        ],
+        [
+          52,
+          13
+        ],
+        [
+          80,
+          11
+        ],
+        [
+          87,
+          9
+        ],
+        [
+          87,
+          10
+        ],
+        [
+          88,
+          5
+        ],
+        [
+          88,
+          6
+        ],
+        [
+          88,
+          7
+        ],
+        [
+          88,
+          8
+        ],
+        [
+          88,
+          9
+        ],
+        [
+          88,
+          10
+        ],
+        [
+          88,
+          11
+        ],
+        [
+          88,
+          12
+        ],
+        [
+          88,
+          13
+        ],
+        [
+          93,
+          3
+        ],
+        [
+          93,
+          4
+        ],
+        [
+          93,
+          5
+        ],
+        [
+          93,
+          6
+        ],
+        [
+          93,
+          7
+        ],
+        [
+          93,
+          8
+        ],
+        [
+          93,
+          9
+        ],
+        [
+          93,
+          10
+        ],
+        [
+          116,
+          8
+        ],
+        [
+          116,
+          9
+        ],
+        [
+          116,
+          10
+        ],
+        [
+          116,
+          11
+        ],
+        [
+          116,
+          12
+        ],
+        [
+          116,
+          13
+        ],
+        [
+          117,
+          5
+        ],
+        [
+          117,
+          6
+        ],
+        [
+          117,
+          7
+        ],
+        [
+          117,
+          8
+        ],
+        [
+          117,
+          9
+        ],
+        [
+          117,
+          10
+        ],
+        [
+          117,
+          11
+        ],
+        [
+          117,
+          12
+        ],
+        [
+          117,
+          13
+        ],
+        [
+          134,
+          5
+        ],
+        [
+          134,
+          6
+        ],
+        [
+          134,
+          7
+        ],
+        [
+          143,
+          2
+        ],
+        [
+          147,
+          2
+        ],
+        [
+          148,
+          1
+        ],
+        [
+          148,
+          2
+        ],
+        [
+          148,
+          3
+        ],
+        [
+          149,
+          2
+        ],
+        [
+          174,
+          2
+        ],
+        [
+          175,
+          1
+        ],
+        [
+          175,
+          2
+        ],
+        [
+          175,
+          3
+        ],
+        [
+          176,
+          2
+        ]
+      ],
+      "del": [
+        [
+          52,
+          14
+        ],
+        [
+          117,
+          14
+        ],
+        [
+          126,
+          5
+        ],
+        [
+          128,
+          5
+        ],
+        [
+          133,
+          5
+        ],
+        [
+          146,
+          4
+        ],
+        [
+          147,
+          3
+        ],
+        [
+          147,
+          4
+        ],
+        [
+          148,
+          4
+        ],
+        [
+          149,
+          3
+        ],
+        [
+          149,
+          4
+        ],
+        [
+          174,
+          3
+        ],
+        [
+          175,
+          4
+        ],
+        [
+          176,
+          3
+        ],
+        [
+          177,
+          3
+        ]
+      ]
+    },
+    "program": {
+      "file": "programs/jw copy.json",
+      "program": "401",
+      "destination": "Not In Service",
+      "route": "000"
+    },
+    "pages": [
+      {
+        "route": "1",
+        "destination": "Tutbury",
+        "via": "Stretton Rolleston",
+        "style": "top",
+        "fsrc": "bdf",
+        "route_font": "johnston100-45.bdf",
+        "dest_font": "johnston100-26.bdf",
+        "via_font": "johnston100-20.bdf",
+        "route_scale": 1,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": false,
+        "sys": {
+          "route": {
+            "family": "Arial",
+            "px": 34,
+            "bold": false
+          },
+          "dest": {
+            "family": "Arial",
+            "px": 40,
+            "bold": false
+          },
+          "via": {
+            "family": "Arial",
+            "px": 12,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [],
+          "del": []
+        },
+        "seconds": 0
+      },
+      {
+        "route": "1",
+        "destination": "Tutbury",
+        "via": "the Tutbury jinnie",
+        "style": "top",
+        "fsrc": "bdf",
+        "route_font": "johnston100-45.bdf",
+        "dest_font": "johnston100-26.bdf",
+        "via_font": "johnston100-18.bdf",
+        "route_scale": 1,
+        "dest_scale": 1,
+        "via_scale": 1,
+        "upper_dest": false,
+        "via_prefix": false,
+        "sys": {
+          "route": {
+            "family": "Arial",
+            "px": 34,
+            "bold": false
+          },
+          "dest": {
+            "family": "Arial",
+            "px": 40,
+            "bold": false
+          },
+          "via": {
+            "family": "Arial",
+            "px": 12,
+            "bold": false
+          }
+        },
+        "touch": {
+          "add": [
+            [
+              39,
+              3
+            ],
+            [
+              39,
+              4
+            ],
+            [
+              39,
+              5
+            ],
+            [
+              39,
+              6
+            ],
+            [
+              39,
+              7
+            ],
+            [
+              39,
+              8
+            ],
+            [
+              39,
+              9
+            ],
+            [
+              39,
+              10
+            ],
+            [
+              52,
+              7
+            ],
+            [
+              52,
+              8
+            ],
+            [
+              52,
+              9
+            ],
+            [
+              52,
+              10
+            ],
+            [
+              52,
+              11
+            ],
+            [
+              52,
+              12
+            ],
+            [
+              52,
+              13
+            ],
+            [
+              80,
+              11
+            ],
+            [
+              87,
+              9
+            ],
+            [
+              87,
+              10
+            ],
+            [
+              88,
+              5
+            ],
+            [
+              88,
+              6
+            ],
+            [
+              88,
+              7
+            ],
+            [
+              88,
+              8
+            ],
+            [
+              88,
+              9
+            ],
+            [
+              88,
+              10
+            ],
+            [
+              88,
+              11
+            ],
+            [
+              88,
+              12
+            ],
+            [
+              88,
+              13
+            ],
+            [
+              93,
+              3
+            ],
+            [
+              93,
+              4
+            ],
+            [
+              93,
+              5
+            ],
+            [
+              93,
+              6
+            ],
+            [
+              93,
+              7
+            ],
+            [
+              93,
+              8
+            ],
+            [
+              93,
+              9
+            ],
+            [
+              93,
+              10
+            ],
+            [
+              116,
+              8
+            ],
+            [
+              116,
+              9
+            ],
+            [
+              116,
+              10
+            ],
+            [
+              116,
+              11
+            ],
+            [
+              116,
+              12
+            ],
+            [
+              116,
+              13
+            ],
+            [
+              117,
+              5
+            ],
+            [
+              117,
+              6
+            ],
+            [
+              117,
+              7
+            ],
+            [
+              117,
+              8
+            ],
+            [
+              117,
+              9
+            ],
+            [
+              117,
+              10
+            ],
+            [
+              117,
+              11
+            ],
+            [
+              117,
+              12
+            ],
+            [
+              117,
+              13
+            ],
+            [
+              134,
+              5
+            ],
+            [
+              134,
+              6
+            ],
+            [
+              134,
+              7
+            ],
+            [
+              143,
+              2
+            ],
+            [
+              147,
+              2
+            ],
+            [
+              148,
+              1
+            ],
+            [
+              148,
+              2
+            ],
+            [
+              148,
+              3
+            ],
+            [
+              149,
+              2
+            ],
+            [
+              174,
+              2
+            ],
+            [
+              175,
+              1
+            ],
+            [
+              175,
+              2
+            ],
+            [
+              175,
+              3
+            ],
+            [
+              176,
+              2
+            ]
+          ],
+          "del": [
+            [
+              52,
+              14
+            ],
+            [
+              117,
+              14
+            ],
+            [
+              126,
+              5
+            ],
+            [
+              128,
+              5
+            ],
+            [
+              133,
+              5
+            ],
+            [
+              146,
+              4
+            ],
+            [
+              147,
+              3
+            ],
+            [
+              147,
+              4
+            ],
+            [
+              148,
+              4
+            ],
+            [
+              149,
+              3
+            ],
+            [
+              149,
+              4
+            ],
+            [
+              174,
+              3
+            ],
+            [
+              175,
+              4
+            ],
+            [
+              176,
+              3
+            ],
+            [
+              177,
+              3
+            ]
+          ]
         },
         "seconds": 0
       }
