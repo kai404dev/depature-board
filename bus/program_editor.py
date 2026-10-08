@@ -7,7 +7,7 @@ per-screen seconds/fit/colour, reorder). An image browser lists every
 PNG under bitmap/ to click-add, with thumbnails. Saves atomically;
 the running matrix picks the file up within ~1s (no restart).
 
-  python3 program_editor.py programs/jw.json --port 4050
+  python3 program_editor.py programs/bus.json --port 4050
   # http://localhost:4050
 
 Stdlib only. Never touches the matrix -- it only edits the JSON file.
@@ -23,7 +23,9 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(THIS_DIR, os.pardir))
 sys.path.insert(0, THIS_DIR)
+sys.path.insert(0, REPO_ROOT)  # shared libs (images.py) stay at root
 
 import program as model
 
@@ -40,7 +42,7 @@ def esc(s):
 
 
 def program_files():
-    """Sorted repo-relative *.json paths under programs/."""
+    """Sorted *.json paths under bus/programs/, bus-relative."""
     base = os.path.join(THIS_DIR, "programs")
     try:
         names = sorted(f for f in os.listdir(base)
@@ -51,14 +53,15 @@ def program_files():
 
 
 def available_images():
-    """Sorted repo-relative PNG paths under bitmap/ (for click-to-add)."""
+    """Sorted PNG paths under bus/bitmap/, repo-root-relative
+    (the convention stored in the JSON, e.g. bus/bitmap/...)."""
     base = os.path.join(THIS_DIR, "bitmap")
     out = []
     for root, _dirs, files in os.walk(base):
         for f in sorted(files):
             if f.lower().endswith(".png"):
                 full = os.path.join(root, f)
-                out.append(os.path.relpath(full, THIS_DIR))
+                out.append(os.path.relpath(full, REPO_ROOT))
     return sorted(out)
 
 
@@ -117,13 +120,16 @@ def render_preview_png(path, program, dest, index, W, H, dim, fit, t):
         s["fit"] = fit
     base = os.path.dirname(path)
     img_path = s["image"]
-    full = img_path if os.path.isabs(img_path) else \
-        os.path.normpath(os.path.join(THIS_DIR, img_path))
-    if not full.startswith(THIS_DIR + os.sep):
-        # absolute program files resolve relative to their own dir
-        alt = os.path.normpath(os.path.join(base, img_path))
-        if alt.startswith(THIS_DIR + os.sep):
-            full = alt
+    full = None
+    for root in (REPO_ROOT, base, THIS_DIR):
+        cand = (img_path if os.path.isabs(img_path) else
+                os.path.normpath(os.path.join(root, img_path)))
+        if cand.startswith(REPO_ROOT + os.sep) or \
+                cand.startswith(THIS_DIR + os.sep):
+            full = cand
+            break
+    if full is None:
+        full = os.path.normpath(os.path.join(REPO_ROOT, img_path))
     _sw, _sh, frame = load_frame(full, W, H, s["fit"])
     if s.get("colour") == "rgb":
         frame = rainbow_frame(frame, W, H, t)
@@ -297,7 +303,8 @@ def check_screen(s, prog, dest, raw, data):
 def missing_warn(s):
     p = s.get("image") if isinstance(s, dict) else s
     p = str(p or "").strip()
-    if p and not os.path.exists(os.path.join(THIS_DIR, p)):
+    if p and not os.path.exists(os.path.join(REPO_ROOT, p)) and \
+            not os.path.exists(os.path.join(THIS_DIR, p)):
         return [f"missing file: {p}"]
     return []
 
@@ -895,7 +902,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(payload, "application/json", 500)
             payload = json.dumps({"file": PROGRAM_FILE,
                                   "rel": os.path.relpath(PROGRAM_FILE,
-                                                         THIS_DIR),
+                                                         REPO_ROOT),
                                   "data": data,
                                   "images": available_images()}).encode()
             return self._send(payload, "application/json")
@@ -906,8 +913,8 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/img":
             q = urllib.parse.parse_qs(parsed.query)
             p = (q.get("path") or [""])[0]
-            full = os.path.normpath(os.path.join(THIS_DIR, p))
-            if not full.startswith(THIS_DIR + os.sep) or \
+            full = os.path.normpath(os.path.join(REPO_ROOT, p))
+            if not full.startswith(REPO_ROOT + os.sep) or \
                     not p.lower().endswith(".png") or \
                     not os.path.isfile(full):
                 sys.stderr.write("IMG 404 %s\n" % p)
@@ -936,7 +943,7 @@ class Handler(BaseHTTPRequestHandler):
         payload = json.dumps({
             "ok": True,
             "file": path,
-            "rel": os.path.relpath(path, THIS_DIR),
+            "rel": os.path.relpath(path, REPO_ROOT),
             "programs": programs}).encode()
         return self._send(payload, "application/json")
 
@@ -1076,8 +1083,8 @@ def main():
     global PROGRAM_FILE
     ap = argparse.ArgumentParser(description="Edit image programmes in a browser")
     ap.add_argument("program_file", nargs="?",
-                    default=os.path.join(THIS_DIR, "programs", "jw.json"),
-                    help="JSON file to edit (default programs/jw.json)")
+                    default=os.path.join(THIS_DIR, "programs", "bus.json"),
+                    help="JSON file to edit (default bus/programs/bus.json)")
     ap.add_argument("--port", type=int, default=4050)
     args = ap.parse_args()
     PROGRAM_FILE = os.path.abspath(args.program_file)

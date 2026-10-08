@@ -7,14 +7,24 @@ route+dest codes. Drives program.py's live selection; the matrix
 follows whatever is picked here.
 """
 
+import base64
 import json
 import os
+import re
 import sys
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import program as model
+
+THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(THIS_DIR, os.pardir))
+
+
+def slug(s, fallback="untitled"):
+    return (re.sub(r"[^a-z0-9]+", "-", str(s or "").strip().lower())
+            .strip("-") or fallback)
 
 
 def numeric_route(route):
@@ -346,9 +356,9 @@ class Controller:
             if not isinstance(raw, dict):
                 continue
             for d, _ in self._ids_for(name):
-                p = self._first_image(name, d)
-                if p:
-                    imgs.add(p)
+                for s in self._screens_of(name, d):
+                    if s.get("image"):
+                        imgs.add(s["image"])
         return imgs
 
     def _flat(self):
@@ -501,6 +511,8 @@ class Controller:
             bigimg = None
         return {
             "program": self.program_name,
+            "program_file": os.path.relpath(self.path, REPO_ROOT)
+            if self.path.startswith(REPO_ROOT) else self.path,
             "route": route,
             "dest": self.dest_name,
             "dest_id": cur_id,
@@ -521,7 +533,152 @@ class Controller:
                      "name": d, "id": di,
                      "img": self._first_image(p, d)}
                     for p, d, di in flat],
+            "screens": self._screens_of(self.program_name,
+                                        self.dest_name),
         }
+
+    def _screens_of(self, program, dest):
+        """All screens of the live pick for the preview filmstrip."""
+        raw = self.data[1].get(program)
+        if not isinstance(raw, dict):
+            return []
+        dests = raw.get("destinations", {})
+        if isinstance(dests, dict):
+            if dest is None:
+                want = list(dests)
+            else:
+                want = [dest] if dest in dests else []
+            out = []
+            for d in want:
+                v = dests[d]
+                lst = (v.get("images", v.get("screens", []))
+                       if isinstance(v, dict) else v)
+                if isinstance(lst, list):
+                    for s in lst:
+                        if isinstance(s, dict):
+                            out.append({"image": str(s.get("image", "")),
+                                        "seconds": s.get("seconds"),
+                                        "dest": d})
+                        else:
+                            out.append({"image": str(s), "seconds": None,
+                                        "dest": d})
+            return out
+        screens = raw.get("screens", [])
+        return [{"image": str(s.get("image") if isinstance(s, dict)
+                              else s),
+                 "seconds": s.get("seconds") if isinstance(s, dict)
+                 else None, "dest": dest}
+                for s in (screens if isinstance(screens, list) else [])]
+
+    def add_upload(self, program, dest, filename, png, seconds=None,
+                   route=""):
+        """Save an uploaded PNG and append it to the program file.
+
+        Creates the program/destination when missing (new routes from
+        Sign Studio land here). Returns the repo-relative image path.
+        Raises ValueError with a plain message on any problem; the
+        JSON file is only replaced once the result validates.
+        """
+        program = str(program or "").strip()
+        dest = str(dest or "").strip()
+        if not program:
+            raise ValueError("name a program (route)")
+        if not dest:
+            raise ValueError("name a destination")
+        if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("not a PNG file")
+        base = os.path.basename(str(filename or "").strip())
+        if not base.lower().endswith(".png") or base in (".png",):
+            base = f"{slug(dest)}.png"
+        base = re.sub(r"[^a-zA-Z0-9._-]", "-", base).strip("-") or \
+            f"{slug(dest)}.png"
+        with self.lock:
+            self._refresh_locked()
+            raw = self.data[1].get(program)
+            route_no = str(route or "").strip()
+            if isinstance(raw, dict):
+                route_no = route_no or str(raw.get("route", "") or "")
+            route_no = route_no or program
+            rel = "/".join(["bus", "bitmap", "destinations",
+                            slug(program), slug(route_no), base])
+            full = os.path.normpath(os.path.join(REPO_ROOT, rel))
+            if not full.startswith(os.path.join(
+                    REPO_ROOT, "bus", "bitmap") + os.sep):
+                raise ValueError("bad image path")
+            try:
+                with open(self.path) as f:
+                    original = f.read()
+                data = json.loads(original)
+            except (OSError, ValueError) as e:
+                raise ValueError(f"cannot read program file: {e}")
+            progs = data.get("programs")
+            if not isinstance(progs, dict):
+                raise ValueError("program file has no 'programs' object")
+            prog = progs.get(program)
+            if not isinstance(prog, dict):
+                prog = {"route": route_no, "destinations": {}}
+                progs[program] = prog
+            dests = prog.get("destinations")
+            if isinstance(dests, str):
+                dests = prog["destinations"] = [dests]
+            if isinstance(dests, dict):
+                entry = dests.get(dest)
+                if isinstance(entry, dict):
+                    key = "images" if "images" in entry else (
+                        "screens" if "screens" in entry else "images")
+                    lst = entry.get(key)
+                    if not isinstance(lst, list):
+                        lst = entry[key] = []
+                elif isinstance(entry, list):
+                    lst = entry
+                else:
+                    lst = dests[dest] = []
+                existing = [s.get("image") if isinstance(s, dict) else s
+                            for s in lst]
+            elif isinstance(dests, list):
+                if dest not in [str(d) for d in dests]:
+                    dests.append(dest)
+                screens = prog.get("screens")
+                if not isinstance(screens, list):
+                    screens = prog["screens"] = []
+                lst, existing = screens, [
+                    s.get("image") if isinstance(s, dict) else s
+                    for s in screens]
+            else:
+                raise ValueError(f"program '{program}' has an odd "
+                                 f"'destinations' shape -- edit it by hand")
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            tmp_png = full + ".tmp"
+            with open(tmp_png, "wb") as f:
+                f.write(png)
+            os.replace(tmp_png, full)
+            if rel not in existing:
+                lst.append({"image": rel, "seconds": seconds}
+                           if seconds else rel)
+            try:
+                tmp = self.path + ".tmp"
+                with open(tmp, "w") as f:
+                    json.dump(data, f, indent=2)
+                    f.write("\n")
+                os.replace(tmp, self.path)
+                model.load_programs_file(self.path)
+            except SystemExit as e:
+                with open(self.path, "w") as f:
+                    f.write(original)
+                raise ValueError(f"write failed validation ({e})")
+            except OSError as e:
+                raise ValueError(str(e))
+            self._refresh_locked()
+            if program != self.program_name or \
+                    dest != self.dest_name:
+                self.program_name, self.dest_name = program, dest
+                self.field, self.buffer = "line", ""
+                self.hi = self._dest_index()
+                self._save_control()
+                self.message = f"Showing {route_no} {dest}"
+            else:
+                self.message = f"Added {base}"
+            return rel
 
 
 PAGE = """<!DOCTYPE html>
@@ -617,6 +774,18 @@ border-radius:4px;border:1px solid #3a3a42;cursor:pointer}
 .dests img.cur{outline:2px solid #37e05a}
 .dests img.hi{outline:2px solid #ffd27f}
 .hint{color:#777;font-size:12px;text-align:center}
+.stripwrap{max-width:100%;text-align:center}
+.strip{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+.strip img{width:180px;height:30px;object-fit:contain;background:#000;
+border-radius:4px;border:1px solid #3a3a42}
+.strip span{background:#26262c;border:1px solid #3a3a42;border-radius:6px;
+padding:6px 11px;font-size:12px;color:#cfcfd6}
+.up{max-width:640px;background:#14151a;border:1px solid #33333c;
+border-radius:10px;padding:10px 12px;font-size:13px;color:#cfcfd6}
+.uprow{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.up input,.up button{background:#222;color:#fff;border:1px solid #555;
+border-radius:6px;padding:6px 8px;font-size:13px}
+.up button{background:#1d5c2e;border-color:#1d5c2e;cursor:pointer}
 button{font-family:inherit}
 @media (max-width:720px){
 .main{grid-template-columns:52px 1fr}
@@ -677,6 +846,17 @@ button{font-family:inherit}
 </div>
 </div></div></div>
 <div class="dests" id="dests"></div>
+<div class="stripwrap"><div class="hint" id="striphead">screens</div>
+<div class="strip" id="strip"></div></div>
+<div class="up"><b>Upload a Sign Studio PNG</b> — saved into
+bitmap/destinations/…, appended to the program file, and shown on
+screen. New programs/destinations are created as needed.
+<div class="uprow"><input type="file" id="upfile" accept=".png,image/png">
+<input id="upprog" placeholder="program e.g. 43" size="8">
+<input id="updest" placeholder="destination e.g. Sheffield" size="12">
+<input id="upsecs" placeholder="secs" size="4">
+<button onclick="upload()">Upload + show</button></div>
+<div class="hint" id="upmsg"></div></div>
 <div class="hint">F1 route &middot; F2 destination (arrows or id) &middot;
 F5 all destinations on arrows &middot;
 keypad takes route+dest codes, e.g. 40101 &middot; keyboard: 0-9,
@@ -734,11 +914,51 @@ el.onclick=go;
 }
 if(cls)el.className=cls;
 box.appendChild(el);});
+var sh=document.getElementById('striphead');
+sh.textContent='screens — '+s.program+' / '+(s.dest||'all')+
+' ('+s.screens.length+') — showing on the matrix';
+var st=document.getElementById('strip');st.innerHTML='';
+s.screens.forEach(function(sc){
+var el;
+if(sc.img){
+el=document.createElement('img');
+el.src='/api/img?path='+encodeURIComponent(sc.img);
+el.title=(sc.dest||'')+' '+(sc.seconds||'');
+}else{
+el=document.createElement('span');
+el.textContent=(sc.dest||'')+' '+(sc.img||'');
+}
+st.appendChild(el);});
+var up=document.getElementById('upprog');
+if(up&&!up.value)up.value=s.program||'';
+var ud=document.getElementById('updest');
+if(ud&&!ud.value)ud.value=s.dest||'';
 }
 async function press(k){
 var r=await fetch('/api/key',{method:'POST',
 headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});
 update(await r.json());
+}
+async function upload(){
+var f=document.getElementById('upfile').files[0];
+var m=document.getElementById('upmsg');
+if(!f){m.textContent='pick a PNG file first';return;}
+m.textContent='uploading…';
+var rd=new FileReader();
+rd.onload=function(){
+var secs=parseFloat(document.getElementById('upsecs').value);
+fetch('/api/upload',{method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({program:document.getElementById('upprog').value,
+destination:document.getElementById('updest').value,
+filename:f.name,data:rd.result,
+seconds:isNaN(secs)?null:secs})}).then(function(r){return r.json();})
+.then(function(j){
+if(j.ok){m.textContent='saved '+j.path+' — on screen now';update(j.state);}
+else m.textContent=j.error||'upload failed';})
+.catch(function(){m.textContent='server unreachable';});
+};
+rd.readAsDataURL(f);
 }
 async function poll(){
 try{var r=await fetch('/api/state');update(await r.json());}catch(e){}
@@ -793,6 +1013,8 @@ def serve(ctl, port):
                 self._send(b"not found", "text/plain", 404)
 
         def do_POST(self):
+            if self.path == "/api/upload":
+                return self._upload()
             if self.path != "/api/key":
                 self._send(b"not found", "text/plain", 404)
                 return
@@ -804,6 +1026,61 @@ def serve(ctl, port):
                 key = ""
             self._send(json.dumps(outer.press(str(key))).encode(),
                        "application/json")
+
+        def _upload(self):
+            try:
+                ln = int(self.headers.get("Content-Length", 0))
+            except (TypeError, ValueError):
+                ln = 0
+            if ln <= 0 or ln > 2 * 1024 * 1024:
+                self._send(json.dumps(
+                    {"ok": False,
+                     "error": "empty or oversized upload (max 2MB)"}
+                ).encode(), "application/json", 400)
+                return
+            try:
+                body = json.loads(self.rfile.read(ln) or b"{}")
+            except Exception:
+                self._send(json.dumps(
+                    {"ok": False, "error": "bad JSON"}).encode(),
+                    "application/json", 400)
+                return
+            data = str(body.get("data", "") or "")
+            if "," in data and data.startswith("data:"):
+                data = data.split(",", 1)[1]
+            try:
+                png = base64.b64decode(data, validate=True)
+            except Exception:
+                self._send(json.dumps(
+                    {"ok": False,
+                     "error": "bad image data (need PNG dataURL)"}
+                ).encode(), "application/json", 400)
+                return
+            try:
+                secs = body.get("seconds", None)
+                secs = float(secs) if secs not in (None, "") else None
+                if secs is not None and secs <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                self._send(json.dumps(
+                    {"ok": False,
+                     "error": "seconds must be positive"}).encode(),
+                    "application/json", 400)
+                return
+            try:
+                rel = outer.add_upload(
+                    body.get("program"), body.get("destination"),
+                    body.get("filename", "upload.png"), png, secs,
+                    route=body.get("route", ""))
+            except ValueError as e:
+                self._send(json.dumps(
+                    {"ok": False, "error": str(e)}).encode(),
+                    "application/json", 400)
+                return
+            self._send(json.dumps(
+                {"ok": True, "path": rel,
+                 "state": outer.snapshot()}).encode(),
+                "application/json")
 
     print(f"portal on :{port}", file=sys.stderr, flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()

@@ -36,6 +36,7 @@ import time
 
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, THIS_DIR)
+sys.path.insert(0, os.path.join(THIS_DIR, "bus"))  # program.py moved in
 MSG_FILE = os.path.join(THIS_DIR, "sign-messages.json")
 
 from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer
@@ -58,10 +59,10 @@ import engine as ENG
 W, H = ENG.W, ENG.H
 STYLES = ("top", "bottom", "left", "right")
 STYLE_TAG = {
-    "top": "top via -- via over dest",
-    "bottom": "bottom via -- dest over via",
-    "left": "left via -- via | dest side by side",
-    "right": "right via -- dest | via side by side",
+    "top": "top via - via over dest",
+    "bottom": "bottom via - dest over via",
+    "left": "left via - via | dest side by side",
+    "right": "right via - dest | via side by side",
 }
 COLOURS = [
     ("white", "#ffffff"),
@@ -357,10 +358,24 @@ def slug(s, fallback="untitled"):
             or fallback)
 
 
-def page_paths(program, name_route, name_dest, n):
+def bitmap_base_for_program_file(path):
+    """Bitmap base dir (repo-root-relative) for a program file.
+
+    Program files under bus/programs/ keep their PNGs under
+    bus/bitmap/; everything else uses the root bitmap/.
+    """
+    full = path if os.path.isabs(path) else os.path.normpath(
+        os.path.join(THIS_DIR, path))
+    if full.startswith(os.path.join(THIS_DIR, "bus", "programs")
+                       + os.sep):
+        return os.path.join("bus", "bitmap")
+    return "bitmap"
+
+
+def page_paths(program, name_route, name_dest, n, bitmap_base="bitmap"):
     """Repo-relative PNG paths for n pages, 1-based and stable:
 
-      bitmap/destinations/<program>/<route>/<route>-<dest>-<page>.png
+      <bitmap_base>/destinations/<program>/<route>/<route>-<dest>-<page>.png
 
     e.g. bitmap/destinations/401/401/401-burton-1.png
     """
@@ -368,7 +383,7 @@ def page_paths(program, name_route, name_dest, n):
     r = slug(name_route, "noroute")
     d = slug(name_dest, "untitled")
     base = f"{r}-{d}" if r != d else r
-    return [os.path.join("bitmap", "destinations", p, r,
+    return [os.path.join(bitmap_base, "destinations", p, r,
                           f"{base}-{i}.png").replace(os.sep, "/")
             for i in range(1, n + 1)]
 
@@ -521,14 +536,17 @@ def pages_from_message(m):
 
 
 def program_files():
-    """Repo-relative programs/*.json paths, sorted."""
-    base = os.path.join(THIS_DIR, "programs")
-    try:
-        names = sorted(f for f in os.listdir(base)
-                       if f.lower().endswith(".json"))
-    except OSError:
-        return []
-    return [os.path.join("programs", f) for f in names]
+    """Repo-relative programs/*.json paths, sorted (root + bus/)."""
+    out = []
+    for sub in ("programs", os.path.join("bus", "programs")):
+        base = os.path.join(THIS_DIR, sub)
+        try:
+            names = sorted(f for f in os.listdir(base)
+                           if f.lower().endswith(".json"))
+        except OSError:
+            continue
+        out.extend([os.path.join(sub, f) for f in names])
+    return sorted(out)
 
 
 def program_index(path):
@@ -601,12 +619,15 @@ def send_pages_to_program(pages, fg_hex, invert, name_route, name_dest,
     else:
         # brand-new program file in house style (midlandclassic
         # defaults: amber blinds). New files must live under
-        # programs/ so a typo can't spray files around the repo.
-        progs_dir = os.path.join(THIS_DIR, "programs") + os.sep
-        if not full.startswith(progs_dir) or os.sep in os.path.basename(
+        # programs/ or bus/programs/ so a typo can't spray files
+        # around the repo.
+        roots = (os.path.join(THIS_DIR, "programs") + os.sep,
+                 os.path.join(THIS_DIR, "bus", "programs") + os.sep)
+        if not full.startswith(roots) or os.sep in os.path.basename(
                 full):
             raise ValueError("new program files must live under "
-                             "programs/, e.g. programs/mine.json")
+                              "programs/ or bus/programs/, e.g. "
+                              "bus/programs/mine.json")
         if not os.path.isdir(os.path.dirname(full)):
             raise ValueError(f"folder does not exist: "
                              f"{os.path.dirname(full)}")
@@ -620,7 +641,8 @@ def send_pages_to_program(pages, fg_hex, invert, name_route, name_dest,
     if not dname:
         raise ValueError("name a destination")
 
-    relpaths = page_paths(pname, name_route, name_dest, len(pages))
+    relpaths = page_paths(pname, name_route, name_dest, len(pages),
+                          bitmap_base_for_program_file(full))
     fg = ENG.parse_colour(fg_hex)
     # phase 1: prepare every page (spec resolution fails here, before
     # any PNG is written)
@@ -875,7 +897,9 @@ class SendDialog(QDialog):
         n = len(self._pages)
         paths = page_paths(self.c_prog.currentText(),
                            self.e_route.text(),
-                           self.c_dest.currentText(), n)
+                           self.c_dest.currentText(), n,
+                           bitmap_base_for_program_file(
+                               self.c_file.currentText()))
         secs = []
         for p in self._pages:
             try:
@@ -1210,7 +1234,7 @@ class Studio(QMainWindow):
         self.c_rf, self.s_rs = self._bdf_row(bl, "route",
                                               "johnston100-45.bdf", 1)
         self.c_df, self.s_ds = self._bdf_row(bl, "dest",
-                                             "johnston100-32.bdf", 1)
+                                             "johnston100-33.bdf", 1)
         self.c_vf, self.s_vs = self._bdf_row(bl, "via",
                                              "johnston100-20.bdf", 1)
         fl.addWidget(self.bdf_rows)
@@ -3412,12 +3436,17 @@ class Studio(QMainWindow):
                 "message has a program + destination")
             return False
         dest = r.get("destination") or None
+        payload = {"program": r["program"], "destination": dest}
+        wrote = []
+        targets = [CONTROL_FILE,
+                   os.path.join(THIS_DIR, "bus", "program_control.json")]
         try:
-            tmp = CONTROL_FILE + ".tmp"
-            with open(tmp, "w") as f:
-                json.dump({"program": r["program"],
-                           "destination": dest}, f)
-            os.replace(tmp, CONTROL_FILE)
+            for target in dict.fromkeys(targets):
+                tmp = target + ".tmp"
+                with open(tmp, "w") as f:
+                    json.dump(payload, f)
+                os.replace(tmp, target)
+                wrote.append(target)
         except OSError as e:
             self.status.showMessage(f"cannot write control file: {e}")
             return False

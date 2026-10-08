@@ -32,14 +32,13 @@ tweaks reach the real LEDs within about a second, no restart.
 | `layout/page3.json` | Formation diagram (coaches, markers, letters) |
 | `layout/local.json` | **Your** live overrides (untracked — see below) |
 | `control.json` | `{"page": null}` cycle, or `1/2/3` to hold a page |
-| `program.py` | Image programmes for the bus board (`programs.json`) |
-| `portal.py` | ICU 602 replica web portal on `:4040` (drives `program.py`) |
+| `bus/` | Bus destination board: `program.py` runner, `portal.py` ICU 602 portal (`:4040`), `push_bus.py` SSH uploader, `program_editor.py` browser editor, `programs/bus.json`, `bitmap/` PNGs, `program_control.json`, `docs/` manual |
 | `sign-studio.py` | Desktop (Qt) sign designer: multi-page messages (per-page seconds), bitmap (up to 8x) or system fonts (up to 120px), pixel paint/erase touch-ups, LED-dot preview with grid + field overlay, sends pages straight into new or existing `programs/*.json` (`pip install PySide6`) |
 | `engine.py` | Bitmap destination engine (240x40 BDF renderer, layouts, PNG writer — no GUI) backing the studio |
 | `sysfonts.py` | System-font rasterizer (Pillow 1-bit, no GUI) used by the studio |
 | `images.py` | Stdlib PNG decode/scale/tint shared by both boards |
-| `programs.json` | Routes, destinations, image screens, colours, ids |
-| `program_control.json` | Portal's live pick — every matrix run follows it |
+| `programs/` | Rail-era image programmes (run them with `bus/program.py`) |
+| `bus/program_control.json` | Portal's live pick — every matrix run follows it |
 | `bitmap/` | Programme PNGs |
 | `docs/portal.md` | Portal + programmes manual |
 | `fonts/` | Bundled BDF fonts |
@@ -51,15 +50,25 @@ bounds and overlap warnings — the fastest way to check spacing.
 
 ## Bus image programmes + portal
 
-`program.py` plays full-panel PNG programmes from `programs.json`
+`bus/program.py` plays full-panel PNG programmes from a JSON file
 (route → destinations → ordered screens, 10s default dwell, optional
 colour tints). With `--portal` it also serves a Mobitec ICU 602
 replica on `:4040`: F1 enters the route, F2 picks the destination
 (arrows or numeric id), the keypad takes codes like `40101` or
 `11204` (X12 dest 4 — letter routes take a leading `1`, or define a
 custom `"code"`). Picks reach the LEDs within about half a second,
-even across processes via `program_control.json`. Full manual:
+even across processes via `bus/program_control.json`. Full manual:
 `docs/portal.md`.
+
+Bus destination board quickstart (Sign Studio image format, SSH
+push, portal upload + screen control): `bus/programs/bus.json` +
+`bus/push_bus.py` (`.env` `BUS_SSH_*`) + the portal's screens strip
+and PNG upload. Full manual: `bus/docs/bus-board.md`.
+
+```bash
+sudo python3 bus/program.py bus/programs/bus.json --program 43 --portal
+python3 bus/push_bus.py --show 43 --dest Sheffield
+```
 
 ## Carriage loadings (Darwin, RTT mode only)
 

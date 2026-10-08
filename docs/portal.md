@@ -1,13 +1,14 @@
-# Bus portal — ICU 602 replica (`program.py` + `portal.py`)
+# Bus portal — ICU 602 replica (`bus/program.py` + `bus/portal.py`)
 
-`program.py` plays image programmes (PNG screens per route and
+`bus/program.py` plays image programmes (PNG screens per route and
 destination) on the LED matrix. With `--portal` it also hosts a
 browser replica of the Mobitec ICU 602 controller on port **4040**:
 pick the route and destination there and the board follows, live.
+Run from the repo root:
 
 ```bash
-sudo python3 program.py programs.json --program 401 --portal
-python3 program.py programs.json --serve --port 4040   # portal only
+sudo python3 bus/program.py programs/midlandclassic.json --program 401 --portal
+python3 bus/program.py bus/programs/bus.json --serve --port 4040   # portal only
 ```
 
 Open `http://<pi-ip>:4040`. The matrix run and the portal stay in
@@ -94,12 +95,12 @@ also works everywhere `"colour"` does.
 
 ## Control file
 
-Confirmed picks are written to `program_control.json` next to the
-scripts (`{"program": "401", "destination": "Burton"}`). Every live
+Confirmed picks are written to `bus/program_control.json` next to the
+bus scripts (`{"program": "401", "destination": "Burton"}`). Every live
 matrix run watches it, so a `--serve` portal on one process (or Pi)
 steers a matrix run in another within about half a second. The CLI
 selection always wins at startup — the file only takes over when it
-changes afterwards — and a broken `programs.json` save keeps the old
+changes afterwards — and a broken programme-JSON save keeps the old
 screens with an LCD message instead of blanking the board. Delete
 the file to forget the last portal pick.
 
@@ -117,7 +118,7 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/home/kai/depature-board
-ExecStart=/home/kai/depature-board/.venv/bin/python program.py programs.json --program 401 --portal --port 4040
+ExecStart=/home/kai/depature-board/.venv/bin/python bus/program.py bus/programs/bus.json --program 43 --portal --port 4040
 Restart=always
 RestartSec=5
 
@@ -149,7 +150,7 @@ journalctl -u program.service -f   # expect: program '401' ... screens=N
 - Portal picks do nothing on the board: the matrix run must be
   live (`--portal`, plain run, or any run watching the file —
   `--mock`/`--preview` are one-shot and never follow). Check
-  `program_control.json` updates when you press ✓.
+  `bus/program_control.json` updates when you press ✓.
 - `port in use`: something else sits on 4040 — rerun with
   `--port 4041` (departures' tweaker is on 4000, no clash).
 - `code must be digits` / `duplicate destination id`: fix the

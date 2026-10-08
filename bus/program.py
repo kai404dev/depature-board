@@ -51,18 +51,21 @@ fit / tint for that screen (colour also takes "full" / "RGB"). Without --destina
 plays in file order; with it, only that destination's screens play.
 Defaults cascade: screen -> programme -> file -> built-in (10s, fit).
 
-  python3 program.py programs.json --program 401 --mock --once
-  python3 program.py programs.json --program 401 --destination Burton --preview
-  python3 program.py programs.json --list
-  sudo python3 program.py programs.json --program 401
+  python3 bus/program.py bus/programs/bus.json --program 43 --mock --once
+  python3 bus/program.py bus/programs/bus.json --program 43 --destination Sheffield --preview
+  python3 bus/program.py bus/programs/bus.json --list
+  sudo python3 bus/program.py bus/programs/bus.json --program 43
 
 Web portal (Mobitec ICU 602 replica) on :4040: F1 enters the route,
 F2 picks the destination (arrows or numeric id), the keypad takes
 route+dest codes. Destination ids default to file order (0, 1, 2)
 and are overridable per destination with {"id": N}:
 
-  sudo python3 program.py programs.json --program 401 --portal
-  python3 program.py programs.json --serve --port 4040
+  sudo python3 bus/program.py bus/programs/bus.json --program 43 --portal
+  python3 bus/program.py bus/programs/bus.json --serve --port 4040
+
+Run from the repo root: image paths in the JSON are repo-root-relative
+(bus/bitmap/...), and the live pick lives in bus/program_control.json.
 """
 
 import argparse
@@ -72,7 +75,9 @@ import sys
 import time
 
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(THIS_DIR, os.pardir))
 sys.path.insert(0, THIS_DIR)
+sys.path.insert(0, REPO_ROOT)  # shared libs (images.py) stay at root
 
 from images import dim_frame, load_frame, rainbow_frame, tint_frame
 

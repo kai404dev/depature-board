@@ -1,0 +1,25 @@
+{
+  "rotate_seconds": 5,
+  "image_fit": "fit",
+  "colour": "#ff8000",
+  "programs": {
+    "43": {
+      "route": "43",
+      "destinations": {
+        "Sheffield": [
+          "bus/bitmap/destinations/bus/43/43-sheffield-1.png",
+          "bus/bitmap/destinations/bus/43/43-sheffield-2.png"
+        ]
+      }
+    },
+    "000": {
+      "route": "000",
+      "code": "0",
+      "destinations": {
+        "Not in Service": [
+          "bus/bitmap/destinations/bus/nis/nis-not-in-service.png"
+        ]
+      }
+    }
+  }
+}
