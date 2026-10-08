@@ -20,11 +20,80 @@ import program as model
 
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(THIS_DIR, os.pardir))
+sys.path.insert(0, THIS_DIR)
+sys.path.insert(0, REPO_ROOT)  # engine.py (text renderer) stays at root
+
+import engine as ENG
 
 
 def slug(s, fallback="untitled"):
     return (re.sub(r"[^a-z0-9]+", "-", str(s or "").strip().lower())
             .strip("-") or fallback)
+
+
+TEXT_STYLES = ("top", "bottom", "left", "right")
+
+
+def canonical_colour(v):
+    """Validated programme colour string (#rrggbb, full or RGB)."""
+    try:
+        c = model.parse_colour(v, "<new>", "colour")
+    except SystemExit:
+        raise ValueError("colour must be #rrggbb (e.g. #ff8000), "
+                         "full or RGB")
+    if c == "full":
+        return "full"
+    if c == "rgb":
+        return "RGB"
+    return "#%02x%02x%02x" % c
+
+
+def parse_seconds(v):
+    if v in (None, ""):
+        return None
+    try:
+        secs = float(v)
+    except (TypeError, ValueError):
+        raise ValueError("seconds must be a number")
+    if secs <= 0:
+        raise ValueError("seconds must be positive")
+    return secs
+
+
+def parse_dest_id(v):
+    if v in (None, ""):
+        return None
+    if isinstance(v, bool) or not isinstance(v, int):
+        try:
+            v = int(str(v).strip())
+        except (TypeError, ValueError):
+            raise ValueError("destination id must be a whole number")
+    if v < 0:
+        raise ValueError("destination id must be 0 or more")
+    return v
+
+
+def render_text_png(route, dest, via, style, colour_hex):
+    """One 240x40 blind PNG from typed text (Sign Studio BDF look).
+
+    Returns (png_bytes, info). Raises ValueError with a plain message.
+    """
+    style = str(style or "top").lower()
+    if style not in TEXT_STYLES:
+        raise ValueError(f"style must be one of {TEXT_STYLES}")
+    if not (str(route or "").strip() or str(dest or "").strip()):
+        raise ValueError("type a route number and/or a destination")
+    job = {"route": str(route or ""), "dest": str(dest or ""),
+           "via": str(via or ""), "style": style,
+           "route_font": "10x20.bdf", "dest_font": "10x20.bdf",
+           "via_font": "6x13B.bdf", "route_scale": 2,
+           "dest_scale": 1, "via_scale": 1,
+           "fg": colour_hex or "#ff8000"}
+    try:
+        frame, info = ENG.render(job)
+    except ValueError as e:
+        raise ValueError(str(e))
+    return ENG.encode_png(frame), info
 
 
 def numeric_route(route):
@@ -92,7 +161,7 @@ class Controller:
     def __init__(self, path, program=None, dest=None, control=None):
         self.path = path
         self.control = control
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()  # re-entrant: store/create nest
         self.mtime = None
         self.data = None
         self._gen = 0
@@ -527,7 +596,9 @@ class Controller:
                        for n, r, c in self._routes()],
             "destinations": [{"name": d, "id": di,
                               "img": self._first_image(
-                                  self.program_name, d)}
+                                  self.program_name, d),
+                              "n": len(self._screens_of(
+                                  self.program_name, d))}
                              for d, di in ids],
             "all": [{"program": p, "route": self._route_of(p),
                      "name": d, "id": di,
@@ -571,13 +642,15 @@ class Controller:
                 for s in (screens if isinstance(screens, list) else [])]
 
     def add_upload(self, program, dest, filename, png, seconds=None,
-                   route=""):
+                   route="", dest_id=None, colour=None):
         """Save an uploaded PNG and append it to the program file.
 
         Creates the program/destination when missing (new routes from
-        Sign Studio land here). Returns the repo-relative image path.
-        Raises ValueError with a plain message on any problem; the
-        JSON file is only replaced once the result validates.
+        Sign Studio land here). dest_id/colour optionally set the
+        destination's numeric id and tint. Returns the repo-relative
+        image path. Raises ValueError with a plain message on any
+        problem; the JSON file is only replaced once the result
+        validates.
         """
         program = str(program or "").strip()
         dest = str(dest or "").strip()
@@ -592,6 +665,55 @@ class Controller:
             base = f"{slug(dest)}.png"
         base = re.sub(r"[^a-zA-Z0-9._-]", "-", base).strip("-") or \
             f"{slug(dest)}.png"
+        with self.lock:
+            return self._store_locked(program, dest, base, png,
+                                      seconds, route, dest_id, colour)
+
+    def create_text(self, program, dest, route="", via="", style="top",
+                    colour="#ff8000", seconds=None, dest_id=None):
+        """Create a destination from typed text (no Sign Studio needed).
+
+        Renders one 240x40 blind with the bitmap engine, saves it and
+        selects it on screen. Returns (repo-relative path, warnings).
+        """
+        program = str(program or "").strip()
+        dest = str(dest or "").strip()
+        if not program:
+            raise ValueError("name a program (route)")
+        if not dest:
+            raise ValueError("name a destination")
+        colour = canonical_colour(colour or "#ff8000")
+        if colour in ("full", "RGB"):
+            raise ValueError("text blinds need a single colour, "
+                             "e.g. #ff8000")
+        png, info = render_text_png(route, dest, via, style, colour)
+        with self.lock:
+            self._refresh_locked()
+            raw = self.data[1].get(program)
+            route_no = str(route or "").strip()
+            if isinstance(raw, dict):
+                route_no = route_no or str(raw.get("route", "") or "")
+            route_no = route_no or program
+            taken = {s.get("image") for s in
+                     self._screens_of(program, dest)}
+            stem = (f"{slug(route_no, 'noroute')}-{slug(dest)}")
+            k = 1
+            while True:
+                base = f"{stem}-{k}.png"
+                rel = "/".join(["bus", "bitmap", "destinations",
+                                slug(program), slug(route_no), base])
+                if rel not in taken and not os.path.isfile(
+                        os.path.join(REPO_ROOT, rel)):
+                    break
+                k += 1
+            return (self._store_locked(program, dest, base, png,
+                                       seconds, route_no, dest_id,
+                                       colour),
+                    info.get("warnings", []))
+
+    def _store_locked(self, program, dest, base, png, seconds, route,
+                      dest_id, colour):
+        """Write PNG + JSON entry. Caller holds the lock."""
         with self.lock:
             self._refresh_locked()
             raw = self.data[1].get(program)
@@ -655,6 +777,26 @@ class Controller:
             if rel not in existing:
                 lst.append({"image": rel, "seconds": seconds}
                            if seconds else rel)
+            if dest_id is not None or colour is not None:
+                entry = dests.get(dest) if isinstance(dests, dict) \
+                    else None
+                if entry is not None and not isinstance(entry, dict):
+                    entry = dests[dest] = {"images": lst}
+                if isinstance(entry, dict):
+                    if dest_id is not None:
+                        try:
+                            others = {i for d, i in
+                                      model.destination_ids(prog, program)
+                                      if d != dest}
+                        except SystemExit as e:
+                            raise ValueError(str(e))
+                        if dest_id in others:
+                            raise ValueError(
+                                f"destination id {dest_id} is already "
+                                f"used in program '{program}'")
+                        entry["id"] = dest_id
+                    if colour is not None:
+                        entry["colour"] = colour
             try:
                 tmp = self.path + ".tmp"
                 with open(tmp, "w") as f:
@@ -786,6 +928,31 @@ border-radius:10px;padding:10px 12px;font-size:13px;color:#cfcfd6}
 .up input,.up button{background:#222;color:#fff;border:1px solid #555;
 border-radius:6px;padding:6px 8px;font-size:13px}
 .up button{background:#1d5c2e;border-color:#1d5c2e;cursor:pointer}
+.tabs{display:flex;gap:8px}
+.tabs button{background:#1b1b21;color:#9a9aa2;border:1px solid #34343e;
+border-radius:8px;padding:8px 22px;font-size:15px;cursor:pointer}
+.tabs button.on{background:#1d3a4c;color:#fff;border-color:#1d3a4c}
+#pane1,#pane2{display:flex;flex-direction:column;align-items:center;gap:14px;
+width:100%}
+#pane2{display:none;max-width:640px}
+.new{width:100%;background:#14151a;border:1px solid #33333c;
+border-radius:10px;padding:12px;font-size:13px;color:#cfcfd6}
+.new h3{margin:0 0 8px;font-size:14px;color:#fff}
+.new .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.new label{display:flex;flex-direction:column;gap:3px;font-size:12px}
+.new input,.new select,.new button{background:#222;color:#fff;
+border:1px solid #555;border-radius:6px;padding:6px 8px;font-size:13px}
+.new .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.new button{background:#1d5c2e;border-color:#1d5c2e;cursor:pointer}
+.new button.ghost{background:#1d3a4c;border-color:#1d3a4c}
+#tpreview{width:100%;max-width:480px;height:80px;object-fit:contain;
+background:#000;border-radius:6px;border:1px solid #3a3a42;display:none;
+image-rendering:pixelated;margin-top:8px}
+table.dtab{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+table.dtab th,table.dtab td{border-bottom:1px solid #333;padding:6px 8px;
+text-align:left}
+table.dtab button{background:#1d3a4c;border:1px solid #1d3a4c;color:#fff;
+border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px}
 button{font-family:inherit}
 @media (max-width:720px){
 .main{grid-template-columns:52px 1fr}
@@ -794,6 +961,8 @@ button{font-family:inherit}
 .fn{width:54px;font-size:15px}
 }
 </style></head><body>
+<div class="tabs"><button id="tabbtn1" class="on" onclick="showtab(0)">Controller</button><button id="tabbtn2" onclick="showtab(1)">Destinations</button></div>
+<div id="pane1">
 <div class="unit"><div class="face"><div class="main">
 <div class="rail">
 <div class="who">mobitec<b>ICU 602</b></div>
@@ -857,12 +1026,40 @@ screen. New programs/destinations are created as needed.
 <input id="upsecs" placeholder="secs" size="4">
 <button onclick="upload()">Upload + show</button></div>
 <div class="hint" id="upmsg"></div></div>
+</div>
+<div id="pane2">
+<div class="new"><h3>Destinations in <span id="newfile">…</span></h3>
+<div class="hint" id="newhead">program</div>
+<table class="dtab"><thead><tr><th>id</th><th>destination</th>
+<th>screens</th><th></th></tr></thead><tbody id="dtab"></tbody></table></div>
+<div class="new"><h3>Create destination from text</h3>
+<div class="grid">
+<label>program (route group)<input id="nprog" list="progs" placeholder="e.g. 43"></label>
+<label>route number<input id="nroute" placeholder="e.g. 43"></label>
+<label>destination<input id="ndest" placeholder="e.g. Sheffield"></label>
+<label>via (optional)<input id="nvia" placeholder="e.g. Dronfield"></label>
+<label>layout<select id="nstyle"><option value="top">top via - via over dest</option><option value="bottom">bottom via - dest over via</option><option value="left">left via - via | dest</option><option value="right">right via - dest | via</option></select></label>
+<label>colour<input id="ncolour" value="#ff8000"></label>
+<label>destination id (optional)<input id="nid" placeholder="auto"></label>
+<label>dwell secs (optional)<input id="nsecs" placeholder="file default"></label>
+</div>
+<datalist id="progs"></datalist>
+<div class="row"><button class="ghost" onclick="previewCreate()">Preview</button><button onclick="createText()">Create + show</button></div>
+<img id="tpreview" alt="preview">
+<div class="hint" id="nmsg"></div></div>
+</div>
 <div class="hint">F1 route &middot; F2 destination (arrows or id) &middot;
 F5 all destinations on arrows &middot;
 keypad takes route+dest codes, e.g. 40101 &middot; keyboard: 0-9,
 arrows, Enter, Backspace</div>
 <script>
 var lastChips='';
+function showtab(i){
+document.getElementById('pane1').style.display=i?'none':'flex';
+document.getElementById('pane2').style.display=i?'flex':'none';
+document.getElementById('tabbtn1').className=i?'':'on';
+document.getElementById('tabbtn2').className=i?'on':'';
+}
 function update(s){
 var bt=document.getElementById('big'),bi=document.getElementById('bigimg');
 var src=null;
@@ -933,6 +1130,59 @@ var up=document.getElementById('upprog');
 if(up&&!up.value)up.value=s.program||'';
 var ud=document.getElementById('updest');
 if(ud&&!ud.value)ud.value=s.dest||'';
+document.getElementById('newfile').textContent=s.program_file||'';
+document.getElementById('newhead').textContent='program '+s.program+
+' — '+s.destinations.length+' destination(s), click Show to put one on screen';
+var dl=document.getElementById('progs');
+var rkey=s.routes.map(function(r){return r.program;}).join(',');
+if(dl.getAttribute('data-k')!=rkey){
+dl.setAttribute('data-k',rkey);dl.innerHTML='';
+s.routes.forEach(function(r){
+var o=document.createElement('option');o.value=r.program;
+o.textContent=r.program+' (route '+r.route+')';dl.appendChild(o);});}
+var tb=document.getElementById('dtab');tb.innerHTML='';
+s.destinations.forEach(function(d){
+var tr=document.createElement('tr');
+var cur=d.name===s.dest?' style="color:#37e05a"':'';
+tr.innerHTML='<td>'+d.id+'</td><td'+cur+'>'+d.name+'</td><td>'+
+(d.n===undefined?'-':d.n)+'</td><td></td>';
+var b=document.createElement('button');b.textContent='Show';
+b.onclick=(function(n){return function(){press('pick:'+n);};})(d.name);
+tr.lastChild.appendChild(b);tb.appendChild(tr);});
+}
+function formValues(){
+var secs=parseFloat(document.getElementById('nsecs').value);
+return {program:document.getElementById('nprog').value,
+route:document.getElementById('nroute').value,
+destination:document.getElementById('ndest').value,
+via:document.getElementById('nvia').value,
+style:document.getElementById('nstyle').value,
+colour:document.getElementById('ncolour').value||'#ff8000',
+id:document.getElementById('nid').value,
+seconds:isNaN(secs)?null:secs};
+}
+async function previewCreate(){
+var m=document.getElementById('nmsg');
+m.textContent='rendering…';
+var r=await fetch('/api/render-preview',{method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(formValues())});
+var j=await r.json();
+if(!j.ok){m.textContent=j.error||'preview failed';return;}
+var im=document.getElementById('tpreview');
+im.src=j.data;im.style.display='block';
+m.textContent=j.lit+' lit pixels'+(j.warnings.length?' — '+j.warnings.join('; '):'');
+}
+async function createText(){
+var m=document.getElementById('nmsg');
+m.textContent='creating…';
+var r=await fetch('/api/create-text',{method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(formValues())});
+var j=await r.json();
+if(!j.ok){m.textContent=j.error||'create failed';return;}
+m.textContent='saved '+j.path+' — on screen now'+(j.warnings.length?' ('+j.warnings.join('; ')+')':'');
+update(j.state);
 }
 async function press(k){
 var r=await fetch('/api/key',{method:'POST',
@@ -1015,6 +1265,10 @@ def serve(ctl, port):
         def do_POST(self):
             if self.path == "/api/upload":
                 return self._upload()
+            if self.path == "/api/render-preview":
+                return self._render_preview()
+            if self.path == "/api/create-text":
+                return self._create_text()
             if self.path != "/api/key":
                 self._send(b"not found", "text/plain", 404)
                 return
@@ -1079,6 +1333,76 @@ def serve(ctl, port):
                 return
             self._send(json.dumps(
                 {"ok": True, "path": rel,
+                 "state": outer.snapshot()}).encode(),
+                "application/json")
+
+        def _json_body(self, max_bytes=65536):
+            try:
+                ln = int(self.headers.get("Content-Length", 0))
+            except (TypeError, ValueError):
+                ln = 0
+            if ln <= 0 or ln > max_bytes:
+                return None
+            try:
+                return json.loads(self.rfile.read(ln) or b"{}")
+            except Exception:
+                return None
+
+        def _render_preview(self):
+            body = self._json_body()
+            if body is None:
+                self._send(json.dumps(
+                    {"ok": False, "error": "bad JSON"}).encode(),
+                    "application/json", 400)
+                return
+            try:
+                colour = canonical_colour(
+                    body.get("colour", "#ff8000") or "#ff8000")
+                if colour in ("full", "RGB"):
+                    raise ValueError("text blinds need a single "
+                                     "colour, e.g. #ff8000")
+                png, info = render_text_png(
+                    body.get("route", ""), body.get("destination", ""),
+                    body.get("via", ""), body.get("style", "top"),
+                    colour)
+            except ValueError as e:
+                self._send(json.dumps(
+                    {"ok": False, "error": str(e)}).encode(),
+                    "application/json", 400)
+                return
+            self._send(json.dumps(
+                {"ok": True,
+                 "data": "data:image/png;base64," + base64.b64encode(
+                     png).decode(),
+                 "lit": info.get("lit", 0),
+                 "warnings": info.get("warnings", [])}).encode(),
+                "application/json")
+
+        def _create_text(self):
+            body = self._json_body()
+            if body is None:
+                self._send(json.dumps(
+                    {"ok": False, "error": "bad JSON"}).encode(),
+                    "application/json", 400)
+                return
+            try:
+                secs = parse_seconds(body.get("seconds", None))
+                ident = parse_dest_id(body.get("id", None))
+                colour = canonical_colour(
+                    body.get("colour", "#ff8000") or "#ff8000")
+                rel, warnings = outer.create_text(
+                    body.get("program"), body.get("destination"),
+                    route=body.get("route", ""),
+                    via=body.get("via", ""),
+                    style=body.get("style", "top"),
+                    colour=colour, seconds=secs, dest_id=ident)
+            except ValueError as e:
+                self._send(json.dumps(
+                    {"ok": False, "error": str(e)}).encode(),
+                    "application/json", 400)
+                return
+            self._send(json.dumps(
+                {"ok": True, "path": rel, "warnings": warnings,
                  "state": outer.snapshot()}).encode(),
                 "application/json")
 

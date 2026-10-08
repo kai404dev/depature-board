@@ -81,7 +81,9 @@ so the matrix + portal follow within ~1s.
 
 ## Control the screen from the portal
 
-Open `http://<pi-ip>:4040` (ICU 602 replica):
+Open `http://<pi-ip>:4040` (ICU 602 replica). Two tabs:
+
+**Controller** (as before):
 
 - **F1** route, **F2** destination (arrows or numeric id), **✓**
   shows it on the matrix; **F5** browses every destination;
@@ -94,6 +96,17 @@ Open `http://<pi-ip>:4040` (ICU 602 replica):
   `bus/bitmap/destinations/…`, appends it to
   `bus/programs/bus.json`, and puts it on screen. New
   programs/destinations are created.
+
+**Destinations** (new):
+
+- Table of every destination in the live program (id, screen
+  count) with a **Show** button each.
+- **Create destination from text** — no Sign Studio needed:
+  program, route, destination, optional via, layout, colour,
+  numeric id and dwell secs. `Preview` renders the 240x40 blind
+  (same bitmap engine as Sign Studio); `Create + show` saves the
+  PNG, appends it (new programs/destinations are created, ids
+  and colours settable), and puts it straight on screen.
 
 Picks are written to `bus/program_control.json`, so a portal on one
 process steers a matrix run in another within ~0.5s.
